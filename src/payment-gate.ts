@@ -164,6 +164,13 @@ function usesTreasuryAuthorizationIdentity(
         (transfer) =>
           BigInt(transfer.amount) < 0n &&
           hederaAccountIdsEqual(transfer.accountId, authorization.accountId),
+      ) ||
+      Object.values(inspected.tokenTransfers).some((transfers) =>
+        transfers.some(
+          (transfer) =>
+            BigInt(transfer.amount) < 0n &&
+            hederaAccountIdsEqual(transfer.accountId, authorization.accountId),
+        ),
       )
     ) {
       return true;

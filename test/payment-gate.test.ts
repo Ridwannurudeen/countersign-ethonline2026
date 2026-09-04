@@ -16,9 +16,12 @@ import {
   x402HTTPClient,
 } from "@x402/core/http";
 import {
+  AccountId,
   KeyList,
   PrivateKey,
   Transaction,
+  TransactionId,
+  TransferTransaction,
   type PublicKey,
 } from "@hiero-ledger/sdk";
 import {
@@ -152,6 +155,34 @@ async function createPaymentSignatureHeader(
     resource: { url: baseConfig.resourceUrl },
     accepts: [requirements],
   });
+  return encodePaymentSignatureHeader(paymentPayload);
+}
+
+async function createTokenPaymentSignatureHeader(
+  facilitator: FacilitatorClient,
+  senderAccountId: string,
+  senderPrivateKey: PrivateKey,
+): Promise<string> {
+  const requirements = await paymentRequirements(facilitator);
+  const transaction = await new TransferTransaction()
+    .addTokenTransfer("0.0.7001", senderAccountId, -1n)
+    .addTokenTransfer(
+      "0.0.7001",
+      baseConfig.operationalAccount.accountId,
+      1n,
+    )
+    .setTransactionId(TransactionId.generate("0.0.7162784"))
+    .setNodeAccountIds([AccountId.fromString("0.0.3")])
+    .freeze()
+    .sign(senderPrivateKey);
+  const paymentPayload: PaymentPayload = {
+    x402Version: 2,
+    resource: { url: baseConfig.resourceUrl },
+    accepted: requirements,
+    payload: {
+      transaction: Buffer.from(transaction.toBytes()).toString("base64"),
+    },
+  };
   return encodePaymentSignatureHeader(paymentPayload);
 }
 
@@ -479,4 +510,67 @@ test("payment gate enforces the tinybar price limits", async (t) => {
       );
     });
   }
+});
+
+test("INVARIANT: a payment whose token sender is a treasury authorization identity must be refused before settlement", async (t) => {
+  for (const [name, accountId, privateKey] of [
+    ["owner", "0.0.8101", ownerPrivateKey],
+    ["agent", "0.0.8102", agentPrivateKey],
+    ["guard", "0.0.8103", guardPrivateKey],
+  ] as const) {
+    await t.test(name, async () => {
+      const facilitator = new OfflineFacilitator();
+      const paymentHeader = await createTokenPaymentSignatureHeader(
+        facilitator,
+        accountId,
+        privateKey,
+      );
+      const gate = await createPaymentGate(baseConfig, facilitator);
+
+      const outcome = await gate.review(paymentHeader);
+
+      assert.equal(outcome.paid, false);
+      assert.equal(facilitator.verifyCalls, 0);
+      assert.equal(facilitator.settled.length, 0);
+    });
+  }
+});
+
+test("INVARIANT: a payment whose token sender is the treasury account must be refused before settlement", async () => {
+  const facilitator = new OfflineFacilitator();
+  const paymentHeader = await createTokenPaymentSignatureHeader(
+    facilitator,
+    baseConfig.treasuryAuthorization.accountId,
+    paymentPayerKey,
+  );
+  const gate = await createPaymentGate(baseConfig, facilitator);
+
+  const outcome = await gate.review(paymentHeader);
+
+  assert.equal(outcome.paid, false);
+  assert.equal(facilitator.verifyCalls, 0);
+  assert.equal(facilitator.settled.length, 0);
+});
+
+test("payment gate accepts the operational account as a token sender", async () => {
+  const facilitator = new OfflineFacilitator();
+  const operationalPrivateKey = PrivateKey.generateED25519();
+  const config: PaymentGateConfig = {
+    ...baseConfig,
+    operationalAccount: {
+      ...baseConfig.operationalAccount,
+      publicKey: operationalPrivateKey.publicKey,
+    },
+  };
+  const paymentHeader = await createTokenPaymentSignatureHeader(
+    facilitator,
+    config.operationalAccount.accountId,
+    operationalPrivateKey,
+  );
+  const gate = await createPaymentGate(config, facilitator);
+
+  const outcome = await gate.review(paymentHeader);
+
+  assert.equal(outcome.paid, true);
+  assert.equal(facilitator.settled.length, 1);
 });

@@ -6,6 +6,9 @@ dist/
 *.log
 .DS_Store
 .playwright-mcp/
+__pycache__/
+.pytest_cache/
+*.py[cod]
 var/
 .tmp-*/
 .tmp_*/

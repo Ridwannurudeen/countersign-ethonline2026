@@ -3,7 +3,7 @@ import { createHash, verify } from "node:crypto";
 import type { PublicKey } from "@hiero-ledger/sdk";
 import { canonicalize } from "json-canonicalize";
 
-export interface Mandate {
+interface MandateFields {
   tenantId: string;
   nonce: string;
   treasuryAccountId: string;
@@ -13,13 +13,29 @@ export interface Mandate {
   expiresAtEpochSeconds: string;
 }
 
+export interface LegacyHbarMandate extends MandateFields {
+  schemaVersion?: never;
+  asset?: never;
+}
+
+export type MandateAsset =
+  | { kind: "hbar" }
+  | { kind: "hts"; tokenId: string };
+
+export interface MandateV2 extends MandateFields {
+  schemaVersion: "2";
+  asset: MandateAsset;
+}
+
+export type Mandate = LegacyHbarMandate | MandateV2;
+
 export interface MandateEnvelope {
   mandate: Mandate;
   signature: string;
 }
 
 const envelopeFields = ["mandate", "signature"] as const;
-const mandateFields = [
+const legacyMandateFields = [
   "tenantId",
   "nonce",
   "treasuryAccountId",
@@ -27,6 +43,11 @@ const mandateFields = [
   "maxAmountTinybars",
   "validFromEpochSeconds",
   "expiresAtEpochSeconds",
+] as const;
+const versionTwoMandateFields = [
+  "schemaVersion",
+  "asset",
+  ...legacyMandateFields,
 ] as const;
 const decimalFields = [
   "nonce",
@@ -51,7 +72,7 @@ function requireRecord(value: unknown, name: string): Record<string, unknown> {
 function requireExactFields(
   value: Record<string, unknown>,
   fields: readonly string[],
-  name: "envelope" | "mandate",
+  name: string,
 ): void {
   const allowedFields = new Set(fields);
   for (const field of Object.keys(value)) {
@@ -65,6 +86,23 @@ function requireExactFields(
       throw new Error(`missing ${name} field: ${field}`);
     }
   }
+}
+
+function parseAsset(value: unknown): MandateAsset {
+  const asset = requireRecord(value, "asset");
+  const kind = requireString(asset.kind, "asset kind");
+  if (kind === "hbar") {
+    requireExactFields(asset, ["kind"], "asset");
+    return { kind };
+  }
+  if (kind === "hts") {
+    requireExactFields(asset, ["kind", "tokenId"], "asset");
+    return {
+      kind,
+      tokenId: normalizeTokenId(asset.tokenId),
+    };
+  }
+  throw new Error("asset kind must be hbar or hts");
 }
 
 function requireString(value: unknown, field: string): string {
@@ -89,6 +127,18 @@ function normalizeAccountId(value: unknown, field: string): string {
   const match = numericAccountIdPattern.exec(text);
   if (match === null) {
     throw new Error(`${field} must be a numeric Hedera account ID`);
+  }
+
+  return `${BigInt(match[1]).toString()}.${BigInt(match[2]).toString()}.${BigInt(
+    match[3],
+  ).toString()}`;
+}
+
+function normalizeTokenId(value: unknown): string {
+  const text = requireString(value, "tokenId");
+  const match = numericAccountIdPattern.exec(text);
+  if (match === null) {
+    throw new Error("tokenId must be a numeric Hedera token ID");
   }
 
   return `${BigInt(match[1]).toString()}.${BigInt(match[2]).toString()}.${BigInt(
@@ -127,7 +177,20 @@ export function parseMandateEnvelope(input: unknown): MandateEnvelope {
   requireExactFields(envelope, envelopeFields, "envelope");
 
   const unparsedMandate = requireRecord(envelope.mandate, "mandate");
-  requireExactFields(unparsedMandate, mandateFields, "mandate");
+  const isVersionTwo =
+    Object.hasOwn(unparsedMandate, "schemaVersion") ||
+    Object.hasOwn(unparsedMandate, "asset");
+  requireExactFields(
+    unparsedMandate,
+    isVersionTwo ? versionTwoMandateFields : legacyMandateFields,
+    "mandate",
+  );
+  if (
+    isVersionTwo &&
+    requireString(unparsedMandate.schemaVersion, "schemaVersion") !== "2"
+  ) {
+    throw new Error("schemaVersion must be 2");
+  }
 
   const tenantId = requireString(unparsedMandate.tenantId, "tenantId");
   if (!tenantIdPattern.test(tenantId)) {
@@ -171,27 +234,39 @@ export function parseMandateEnvelope(input: unknown): MandateEnvelope {
 
   const { encoding: signature } = parseSignature(envelope.signature);
 
-  return {
-    mandate: {
-      tenantId,
-      nonce: decimals.nonce,
-      treasuryAccountId: normalizeAccountId(
-        unparsedMandate.treasuryAccountId,
-        "treasuryAccountId",
-      ),
-      recipientAllowlist,
-      maxAmountTinybars: decimals.maxAmountTinybars,
-      validFromEpochSeconds: decimals.validFromEpochSeconds,
-      expiresAtEpochSeconds: decimals.expiresAtEpochSeconds,
-    },
-    signature,
+  const fields: MandateFields = {
+    tenantId,
+    nonce: decimals.nonce,
+    treasuryAccountId: normalizeAccountId(
+      unparsedMandate.treasuryAccountId,
+      "treasuryAccountId",
+    ),
+    recipientAllowlist,
+    maxAmountTinybars: decimals.maxAmountTinybars,
+    validFromEpochSeconds: decimals.validFromEpochSeconds,
+    expiresAtEpochSeconds: decimals.expiresAtEpochSeconds,
   };
+  return isVersionTwo
+    ? {
+        mandate: {
+          schemaVersion: "2",
+          asset: parseAsset(unparsedMandate.asset),
+          ...fields,
+        },
+        signature,
+      }
+    : { mandate: fields, signature };
 }
 
 export function canonicalMandateBytes(mandate: Mandate): Uint8Array {
+  const schemaVersion = mandate.schemaVersion === "2" ? "2" : "1";
   return new TextEncoder().encode(
-    `COUNTERSIGN-MANDATE\u00001\u0000${canonicalize(mandate)}`,
+    `COUNTERSIGN-MANDATE\u0000${schemaVersion}\u0000${canonicalize(mandate)}`,
   );
+}
+
+export function mandateAsset(mandate: Mandate): MandateAsset {
+  return mandate.schemaVersion === "2" ? mandate.asset : { kind: "hbar" };
 }
 
 export function verifyMandateSignature(

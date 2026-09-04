@@ -1,0 +1,911 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Countersign review replay</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #172019;
+        --muted: #4d574f;
+        --faint: #737c74;
+        --canvas: #f4f1e8;
+        --surface: #fffcf4;
+        --line: #b8b4a8;
+        --line-strong: #687269;
+        --accent: #145c43;
+        --accent-soft: #dcebe3;
+        --link: #064f99;
+        --warning: #8b6415;
+        --warning-soft: #fff3d2;
+        --refusal: #8b2d27;
+        --refusal-soft: #f8e9e5;
+        --radius: 0.35rem;
+        --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+        font-family:
+          ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          sans-serif;
+        color: var(--ink);
+        background: var(--canvas);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        min-height: 100vh;
+        margin: 0;
+      }
+
+      body::before {
+        display: block;
+        height: 0.4rem;
+        background: var(--accent);
+        content: "";
+      }
+
+      body::after {
+        position: fixed;
+        inset: 0;
+        z-index: -1;
+        background-image: radial-gradient(
+          rgba(20, 92, 67, 0.08) 0.7px,
+          transparent 0.7px
+        );
+        background-size: 28px 28px;
+        mask-image: linear-gradient(to bottom, #000, transparent 72%);
+        content: "";
+        pointer-events: none;
+      }
+
+      .skip-link {
+        position: fixed;
+        top: 0.75rem;
+        left: 0.75rem;
+        z-index: 4;
+        transform: translateY(-180%);
+        border-radius: var(--radius);
+        padding: 0.7rem 0.9rem;
+        color: var(--surface);
+        background: var(--accent);
+      }
+
+      .skip-link:focus {
+        transform: translateY(0);
+      }
+
+      header,
+      main,
+      footer {
+        width: min(68rem, calc(100% - 2rem));
+        margin-inline: auto;
+      }
+
+      body > header {
+        display: grid;
+        grid-template-columns: minmax(0, 1.25fr) minmax(16rem, 0.75fr);
+        gap: 3rem;
+        align-items: end;
+        padding: 4rem 0 2.5rem;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin-top: 0;
+      }
+
+      h1 {
+        max-width: 12ch;
+        margin-bottom: 1rem;
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: clamp(2.7rem, 7vw, 5.4rem);
+        font-weight: 500;
+        letter-spacing: -0.045em;
+        line-height: 0.94;
+      }
+
+      h2 {
+        font-size: clamp(1.35rem, 3vw, 2rem);
+        letter-spacing: -0.025em;
+      }
+
+      h3 {
+        margin-bottom: 0.45rem;
+        font-size: 1.05rem;
+      }
+
+      p {
+        line-height: 1.6;
+      }
+
+      .eyebrow,
+      .source,
+      .origin,
+      label {
+        font-size: 0.72rem;
+        font-weight: 760;
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+      }
+
+      .eyebrow {
+        color: var(--accent);
+      }
+
+      .lede {
+        max-width: 42rem;
+        color: #3f4a42;
+        font-size: 1.05rem;
+      }
+
+      .legend {
+        border-left: 2px solid var(--line);
+        padding-left: 1.1rem;
+        color: var(--muted);
+      }
+
+      .legend p:last-child {
+        margin-bottom: 0;
+      }
+
+      .source {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        color: var(--muted);
+      }
+
+      .source::before {
+        width: 0.5rem;
+        height: 0.5rem;
+        border: 1px solid currentColor;
+        border-radius: 50%;
+        content: "";
+      }
+
+      .source[data-source="live"] {
+        color: var(--accent);
+      }
+
+      .source[data-source="live"]::before {
+        border-color: var(--accent);
+        background: var(--accent);
+        animation: pulse 1.8s ease-out infinite;
+      }
+
+      .legend .source + .source {
+        margin-left: 1rem;
+      }
+
+      .toolbar,
+      .empty,
+      .load-state {
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: var(--surface);
+      }
+
+      .toolbar {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 1rem;
+        align-items: end;
+        margin-bottom: 1.5rem;
+        padding: 1rem;
+      }
+
+      label {
+        display: block;
+        margin-bottom: 0.45rem;
+        color: var(--muted);
+      }
+
+      select {
+        width: 100%;
+        height: 2.75rem;
+        border: 1px solid var(--line-strong);
+        border-radius: var(--radius);
+        padding: 0 0.75rem;
+        color: var(--ink);
+        background: var(--surface);
+        font: 0.9rem var(--mono);
+        font-variant-numeric: tabular-nums;
+      }
+
+      :focus-visible {
+        outline: none;
+        box-shadow:
+          0 0 0 2px var(--canvas),
+          0 0 0 4px var(--accent);
+      }
+
+      a {
+        color: var(--link);
+        text-underline-offset: 0.18em;
+      }
+
+      a:hover {
+        color: #00376c;
+      }
+
+      .origin {
+        display: inline-block;
+        border: 1px solid var(--line-strong);
+        border-radius: 999px;
+        padding: 0.35rem 0.55rem;
+        color: var(--muted);
+      }
+
+      .replay-heading {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: end;
+        justify-content: space-between;
+        gap: 1rem;
+        margin: 2.4rem 0 1.35rem;
+      }
+
+      .replay-heading h2 {
+        margin-bottom: 0.25rem;
+      }
+
+      .replay-heading p {
+        margin-bottom: 0;
+        color: var(--muted);
+      }
+
+      .chain {
+        position: relative;
+        display: grid;
+        gap: 0;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .step {
+        position: relative;
+        display: grid;
+        grid-template-columns: 3.25rem minmax(0, 1fr);
+        gap: 1rem;
+        min-height: 9rem;
+      }
+
+      .step:not(:last-child)::before {
+        position: absolute;
+        top: 3rem;
+        bottom: 0;
+        left: 1.49rem;
+        width: 1px;
+        background: var(--line);
+        content: "";
+      }
+
+      .step[data-stopped="true"]::before,
+      .step[data-stopped="true"] + .step::before {
+        background: repeating-linear-gradient(
+          to bottom,
+          var(--refusal) 0,
+          var(--refusal) 3px,
+          transparent 3px,
+          transparent 8px
+        );
+      }
+
+      .step-number {
+        position: relative;
+        z-index: 1;
+        display: grid;
+        width: 3rem;
+        height: 3rem;
+        place-items: center;
+        border: 1px solid var(--line-strong);
+        border-radius: 50%;
+        color: var(--muted);
+        background: var(--canvas);
+        font: 0.8rem var(--mono);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .step[data-stopped="true"] .step-number {
+        border-color: var(--refusal);
+        color: var(--refusal);
+        background: var(--refusal-soft);
+      }
+
+      .step-card {
+        margin-bottom: 1rem;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 1rem 1.1rem;
+        background: var(--surface);
+      }
+
+      .step[data-stopped="true"] .step-card {
+        border-style: dashed;
+        border-color: #c5928d;
+        background: #fffaf4;
+      }
+
+      .step-meta {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.65rem;
+        margin-bottom: 0.65rem;
+      }
+
+      .step-state {
+        margin: 0;
+        color: var(--muted);
+      }
+
+      .step-state strong {
+        color: var(--ink);
+      }
+
+      .facts {
+        display: grid;
+        grid-template-columns: minmax(8rem, max-content) minmax(0, 1fr);
+        gap: 0.35rem 1rem;
+        margin: 0.8rem 0 0;
+      }
+
+      .facts dt {
+        color: var(--muted);
+        font-weight: 650;
+      }
+
+      .facts dd {
+        margin: 0;
+        overflow-wrap: anywhere;
+      }
+
+      code,
+      .numeric {
+        font-family: var(--mono);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .empty,
+      .load-state {
+        padding: 1rem 1.15rem;
+      }
+
+      .empty,
+      .load-state,
+      .failure {
+        margin-bottom: 1.5rem;
+      }
+
+      .failure {
+        border-left: 0.25rem solid var(--warning);
+        padding: 0.75rem 0.9rem;
+        color: #5b410d;
+        background: var(--warning-soft);
+      }
+
+      footer {
+        padding: 3rem 0 2rem;
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+
+      [hidden] {
+        display: none !important;
+      }
+
+      @keyframes pulse {
+        0% {
+          box-shadow: 0 0 0 0 rgba(20, 92, 67, 0.32);
+        }
+        70%,
+        100% {
+          box-shadow: 0 0 0 0.38rem rgba(20, 92, 67, 0);
+        }
+      }
+
+      @media (max-width: 44rem) {
+        body > header {
+          grid-template-columns: 1fr;
+          gap: 1rem;
+          padding-top: 2.7rem;
+        }
+
+        .toolbar {
+          grid-template-columns: 1fr;
+        }
+
+        .step {
+          grid-template-columns: 2.65rem minmax(0, 1fr);
+          gap: 0.65rem;
+        }
+
+        .step-number {
+          width: 2.5rem;
+          height: 2.5rem;
+        }
+
+        .step:not(:last-child)::before {
+          top: 2.5rem;
+          left: 1.24rem;
+        }
+
+        .facts {
+          grid-template-columns: 1fr;
+          gap: 0.1rem;
+        }
+
+        .facts dd + dt {
+          margin-top: 0.5rem;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          scroll-behavior: auto !important;
+          animation-duration: 0.01ms !important;
+          animation-iteration-count: 1 !important;
+          transition-duration: 0.01ms !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to replay</a>
+    <header>
+      <div>
+        <p class="eyebrow">Countersign / Review replay</p>
+        <h1>One transfer. Six checkable steps.</h1>
+        <p class="lede">
+          Follow the owner mandate through scheduling, paid review, verdict,
+          guard approval, and execution. A refusal stops on the same rail and
+          makes the missing signature and execution visible.
+        </p>
+      </div>
+      <aside class="legend" aria-label="Evidence source legend">
+        <p>
+          <span class="source" data-source="manifest">Manifest record</span>
+          <span class="source" data-source="live">Live mirror node</span>
+        </p>
+        <p>
+          Manifest facts are Countersign's checked-in record. Live facts are
+          fetched in this browser from Hedera testnet.
+        </p>
+      </aside>
+    </header>
+
+    <main id="main">
+      <p id="load-state" class="load-state" role="status" aria-live="polite">
+        Loading checked-in review records&hellip;
+      </p>
+      <p id="empty-state" class="empty" hidden>No reviews recorded yet.</p>
+
+      <section id="replay" hidden aria-labelledby="replay-title">
+        <div class="toolbar">
+          <div>
+            <label for="review-select">Review record</label>
+            <select id="review-select"></select>
+          </div>
+          <span id="origin" class="origin"></span>
+        </div>
+
+        <div class="replay-heading">
+          <div>
+            <h2 id="replay-title">Causal chain</h2>
+            <p id="replay-subtitle"></p>
+          </div>
+          <a id="schedule-link" target="_blank" rel="noreferrer"
+            >Open schedule evidence</a
+          >
+        </div>
+
+        <ol id="chain" class="chain"></ol>
+      </section>
+
+      <noscript>
+        <p class="failure">
+          This replay needs JavaScript to fetch live schedule evidence from the
+          Hedera mirror node. No outcome can be verified in this browser while
+          JavaScript is disabled.
+        </p>
+      </noscript>
+    </main>
+
+    <footer>
+      Operator-run trials remain labelled as operator activity. Testnet review
+      payments are protocol trials, not revenue.
+    </footer>
+
+    <script type="module">
+      const originCopy = Object.freeze({
+        external: Object.freeze({ label: "External" }),
+        operator: Object.freeze({ label: "Operator-run" }),
+      });
+
+      const elements = {
+        loadState: document.querySelector("#load-state"),
+        emptyState: document.querySelector("#empty-state"),
+        replay: document.querySelector("#replay"),
+        reviewSelect: document.querySelector("#review-select"),
+        origin: document.querySelector("#origin"),
+        replaySubtitle: document.querySelector("#replay-subtitle"),
+        scheduleLink: document.querySelector("#schedule-link"),
+        chain: document.querySelector("#chain"),
+      };
+
+      function requireRecord(value, name) {
+        if (value === null || typeof value !== "object" || Array.isArray(value)) {
+          throw new TypeError(`${name} must be an object`);
+        }
+        return value;
+      }
+
+      function requireString(value, field) {
+        if (typeof value !== "string" || value.length === 0) {
+          throw new TypeError(`${field} must be a non-empty string`);
+        }
+        return value;
+      }
+
+      function parseManifest(value) {
+        const manifest = requireRecord(value, "evidence manifest");
+        if (!Array.isArray(manifest.records)) {
+          throw new TypeError("evidence manifest records must be an array");
+        }
+        if (typeof manifest.guardPublicKeyPrefix !== "string") {
+          throw new TypeError("guardPublicKeyPrefix must be a string");
+        }
+        const records = manifest.records.map((value, index) => {
+          const record = requireRecord(value, `records[${index}]`);
+          if (record.origin !== "operator" && record.origin !== "external") {
+            throw new Error(`records[${index}].origin is invalid`);
+          }
+          if (record.outcome !== "approved" && record.outcome !== "refused") {
+            throw new Error(`records[${index}].outcome is invalid`);
+          }
+          const policy = requireRecord(
+            record.mandatePolicy,
+            `records[${index}].mandatePolicy`,
+          );
+          const asset = requireRecord(
+            policy.asset,
+            `records[${index}].mandatePolicy.asset`,
+          );
+          if (!Array.isArray(policy.recipientAllowlist)) {
+            throw new TypeError(
+              `records[${index}].mandatePolicy.recipientAllowlist must be an array`,
+            );
+          }
+          return {
+            origin: record.origin,
+            outcome: record.outcome,
+            scheduleId: requireString(record.scheduleId, "scheduleId"),
+            mirrorNodeUrl: requireString(record.mirrorNodeUrl, "mirrorNodeUrl"),
+            decidingInvariant: requireString(
+              record.decidingInvariant,
+              "decidingInvariant",
+            ),
+            mandateDigest: requireString(record.mandateDigest, "mandateDigest"),
+            mandatePolicy: {
+              asset,
+              recipientAllowlist: policy.recipientAllowlist.map((account) =>
+                requireString(account, "recipientAllowlist entry"),
+              ),
+              maxAmountTinybars: requireString(
+                policy.maxAmountTinybars,
+                "maxAmountTinybars",
+              ),
+              validFromEpochSeconds: requireString(
+                policy.validFromEpochSeconds,
+                "validFromEpochSeconds",
+              ),
+              expiresAtEpochSeconds: requireString(
+                policy.expiresAtEpochSeconds,
+                "expiresAtEpochSeconds",
+              ),
+            },
+            settlementId:
+              record.settlementId === null
+                ? null
+                : requireString(record.settlementId, "settlementId"),
+            settlementAmountTinybars:
+              record.settlementAmountTinybars === null
+                ? null
+                : requireString(
+                    record.settlementAmountTinybars,
+                    "settlementAmountTinybars",
+                  ),
+            paymentPayerAccountId: requireString(
+              record.paymentPayerAccountId,
+              "paymentPayerAccountId",
+            ),
+          };
+        });
+        if (records.length > 0 && manifest.guardPublicKeyPrefix.length === 0) {
+          throw new Error("guardPublicKeyPrefix is required for replay records");
+        }
+        return {
+          guardPublicKeyPrefix: manifest.guardPublicKeyPrefix.toLowerCase(),
+          records,
+        };
+      }
+
+      function parseMirrorSchedule(value) {
+        const schedule = requireRecord(value, "mirror schedule response");
+        if (!Array.isArray(schedule.signatures)) {
+          throw new TypeError("mirror schedule signatures must be an array");
+        }
+        if (
+          schedule.executed_timestamp !== null &&
+          typeof schedule.executed_timestamp !== "string"
+        ) {
+          throw new TypeError("executed_timestamp must be a string or null");
+        }
+        if (typeof schedule.deleted !== "boolean") {
+          throw new TypeError("deleted must be a boolean");
+        }
+        return {
+          creatorAccountId: requireString(
+            schedule.creator_account_id,
+            "creator_account_id",
+          ),
+          payerAccountId: requireString(
+            schedule.payer_account_id,
+            "payer_account_id",
+          ),
+          executedTimestamp: schedule.executed_timestamp,
+          deleted: schedule.deleted,
+          signaturePrefixes: schedule.signatures.map((value, index) =>
+            requireString(
+              requireRecord(value, `signatures[${index}]`).public_key_prefix,
+              `signatures[${index}].public_key_prefix`,
+            ).toLowerCase(),
+          ),
+        };
+      }
+
+      function factList(facts) {
+        const list = document.createElement("dl");
+        list.className = "facts";
+        for (const [term, description] of facts) {
+          const dt = document.createElement("dt");
+          const dd = document.createElement("dd");
+          dt.textContent = term;
+          dd.textContent = description;
+          list.append(dt, dd);
+        }
+        return list;
+      }
+
+      function addStep(number, title, sourceName, state, facts = [], stopped = false) {
+        const item = document.createElement("li");
+        const marker = document.createElement("span");
+        const card = document.createElement("article");
+        const meta = document.createElement("div");
+        const heading = document.createElement("h3");
+        const source = document.createElement("span");
+        const description = document.createElement("p");
+
+        item.className = "step";
+        item.dataset.stopped = String(stopped);
+        marker.className = "step-number";
+        marker.textContent = String(number).padStart(2, "0");
+        card.className = "step-card";
+        meta.className = "step-meta";
+        heading.textContent = title;
+        source.className = "source";
+        source.dataset.source = sourceName;
+        source.textContent =
+          sourceName === "manifest" ? "Manifest record" : "Live mirror node";
+        description.className = "step-state";
+        description.textContent = state;
+        meta.append(heading, source);
+        card.append(meta, description);
+        if (facts.length > 0) {
+          card.append(factList(facts));
+        }
+        item.append(marker, card);
+        elements.chain.append(item);
+        return { item, description, card };
+      }
+
+      function assetLabel(asset) {
+        return asset.kind === "hbar" ? "HBAR" : `HTS ${asset.tokenId}`;
+      }
+
+      function renderRecord(record) {
+        elements.chain.replaceChildren();
+        elements.origin.textContent = originCopy[record.origin].label;
+        elements.replaySubtitle.textContent =
+          `Schedule ${record.scheduleId} · ${record.outcome}`;
+        elements.scheduleLink.href = record.mirrorNodeUrl;
+
+        addStep(1, "Mandate", "manifest", "Owner policy recorded", [
+          ["Digest", record.mandateDigest],
+          ["Asset", assetLabel(record.mandatePolicy.asset)],
+          ["Allowlist", record.mandatePolicy.recipientAllowlist.join(", ")],
+          ["Cap", `${record.mandatePolicy.maxAmountTinybars} base units`],
+          [
+            "Validity",
+            `${record.mandatePolicy.validFromEpochSeconds} → ${record.mandatePolicy.expiresAtEpochSeconds}`,
+          ],
+        ]);
+        const scheduleStep = addStep(
+          2,
+          "Schedule",
+          "live",
+          "Awaiting live verification",
+          [["ScheduleID", record.scheduleId]],
+        );
+        addStep(
+          3,
+          "x402 settlement",
+          "manifest",
+          record.settlementId === null
+            ? "No settlement was recorded"
+            : "Review payment recorded",
+          [
+            ["Settlement", record.settlementId ?? "Not recorded"],
+            [
+              "Amount",
+              record.settlementAmountTinybars === null
+                ? "Not recorded"
+                : `${record.settlementAmountTinybars} tinybars`,
+            ],
+            ["Payment payer", record.paymentPayerAccountId],
+          ],
+        );
+        addStep(4, "Verdict", "manifest", record.outcome, [
+          ["Deciding invariant", record.decidingInvariant],
+        ]);
+
+        let signatureStep;
+        let executionStep;
+        if (record.outcome === "refused") {
+          signatureStep = addStep(
+            5,
+            "ScheduleSign",
+            "live",
+            "Never happened — awaiting live verification",
+            [],
+            true,
+          );
+          executionStep = addStep(
+            6,
+            "Execution",
+            "live",
+            "Never happened — awaiting live verification",
+            [],
+            true,
+          );
+        } else {
+          signatureStep = addStep(
+            5,
+            "ScheduleSign",
+            "live",
+            "Awaiting guard-prefix verification",
+          );
+          executionStep = addStep(
+            6,
+            "Execution",
+            "live",
+            "Awaiting executed_timestamp verification",
+          );
+        }
+
+        verifyLiveSchedule(
+          record,
+          scheduleStep,
+          signatureStep,
+          executionStep,
+        );
+      }
+
+      async function verifyLiveSchedule(
+        record,
+        scheduleStep,
+        signatureStep,
+        executionStep,
+      ) {
+        try {
+          const response = await fetch(record.mirrorNodeUrl, {
+            headers: { accept: "application/json" },
+          });
+          if (!response.ok) {
+            throw new Error(`mirror node returned HTTP ${response.status}`);
+          }
+          const schedule = parseMirrorSchedule(await response.json());
+          scheduleStep.description.textContent = schedule.deleted
+            ? "Verified live, but the schedule is deleted"
+            : `Verified live · creator ${schedule.creatorAccountId} · payer ${schedule.payerAccountId}`;
+          const guardSigned = schedule.signaturePrefixes.includes(
+            currentManifest.guardPublicKeyPrefix,
+          );
+          if (record.outcome === "refused") {
+            signatureStep.description.textContent = guardSigned
+              ? "Verification mismatch — guard prefix is present"
+              : "Never happened — guard prefix absent from signatures[]";
+            executionStep.description.textContent =
+              schedule.executedTimestamp === null
+                ? "Never happened — executed_timestamp is null"
+                : `Verification mismatch — executed ${schedule.executedTimestamp}`;
+          } else {
+            signatureStep.description.textContent = guardSigned
+              ? "Verified live — guard prefix present in signatures[]"
+              : "Verification mismatch — guard prefix absent";
+            executionStep.description.textContent =
+              schedule.executedTimestamp === null
+                ? "Verification mismatch — executed_timestamp is null"
+                : `Verified live — executed ${schedule.executedTimestamp}`;
+          }
+        } catch (error) {
+          const detail =
+            error instanceof Error ? error.message : "mirror-node request failed";
+          for (const step of [scheduleStep, signatureStep, executionStep]) {
+            step.description.textContent = `Could not verify — ${detail}`;
+          }
+        }
+      }
+
+      function selectRecord(scheduleId) {
+        const record =
+          currentManifest.records.find(
+            (candidate) => candidate.scheduleId === scheduleId,
+          ) ?? currentManifest.records[0];
+        if (record === undefined) {
+          return;
+        }
+        elements.reviewSelect.value = record.scheduleId;
+        const url = new URL(window.location.href);
+        url.searchParams.set("scheduleId", record.scheduleId);
+        window.history.replaceState(null, "", url);
+        renderRecord(record);
+      }
+
+      let currentManifest;
+      async function loadReplay() {
+        try {
+          const response = await fetch("./evidence.json", {
+            headers: { accept: "application/json" },
+          });
+          if (!response.ok) {
+            throw new Error(`evidence file returned HTTP ${response.status}`);
+          }
+          const manifest = parseManifest(await response.json());
+          currentManifest = manifest;
+          elements.loadState.hidden = true;
+          if (manifest.records.length === 0) {
+            elements.emptyState.hidden = false;
+            return;
+          }
+
+          for (const record of manifest.records) {
+            const option = document.createElement("option");
+            option.value = record.scheduleId;
+            option.textContent = `${record.scheduleId} · ${record.outcome} · ${originCopy[record.origin].label}`;
+            elements.reviewSelect.append(option);
+          }
+          elements.reviewSelect.addEventListener("change", () =>
+            selectRecord(elements.reviewSelect.value),
+          );
+          elements.replay.hidden = false;
+          selectRecord(new URLSearchParams(window.location.search).get("scheduleId"));
+        } catch (error) {
+          elements.loadState.textContent = `Could not load review records. ${
+            error instanceof Error ? error.message : "The request failed."
+          } No replay claim was verified.`;
+        }
+      }
+
+      await loadReplay();
+    </script>
+  </body>
+</html>

@@ -15,6 +15,8 @@ of these controls has been exercised against the live network.
 | A recipient cannot appear twice through alternate numeric spellings. | Every numeric account ID is normalized before a set-based duplicate check. | `parseMandateEnvelope rejects duplicate recipients after normalization` |
 | The owner signature must use a canonical Ed25519 scalar. | The signature parser requires canonical unpadded base64url for exactly 64 bytes, and Ed25519 verification rejects non-canonical scalars. | `verifyMandateSignature refuses a non-canonical Ed25519 signature scalar` |
 | Only the configured owner's key can authenticate the mandate. | `verifyMandateSignature` verifies the domain-separated canonical mandate bytes against the supplied owner Ed25519 public key. | `verifyMandateSignature refuses a signature from a different key` |
+| A new mandate names exactly one asset. | Schema v2 requires `schemaVersion: "2"` plus a discriminated `asset`: either `{ kind: "hbar" }` or `{ kind: "hts", tokenId }`. There is no schema-v2 default. | `mandate schema v2 requires an explicit asset`<br>`mandate schema v2 refuses an ambiguous asset` |
+| Existing signed HBAR mandates retain their meaning. | The original exact field set remains schema v1 and its domain-separated preimage remains unchanged. Schema v1 is HBAR-only by definition; schema v2 uses domain version 2. | `canonicalMandateBytes uses the domain-separated RFC 8785 preimage`<br>`reviewSchedule approves a complete in-policy HBAR schedule` |
 
 ## Schedule envelope
 
@@ -52,7 +54,7 @@ of these controls has been exercised against the live network.
 
 | Invariant | Enforcement mechanism | Exact proving test |
 | --- | --- | --- |
-| **Roadmap — wrong asset:** only HBAR is supported. | `tokenTransfers` must be empty; the only accepted value movement is the HBAR transfer list. | `reviewSchedule refuses token transfers` |
+| **Roadmap — wrong asset:** the scheduled transfer must match the one asset named by the mandate. | HBAR mandates require an empty token list. HTS mandates require an empty HBAR list and exactly one fungible token list whose canonical token ID matches the mandate. | `reviewSchedule refuses a token transfer when the mandate says HBAR`<br>`reviewSchedule refuses an HBAR transfer when the mandate says HTS`<br>`reviewSchedule refuses a token id different from the mandate asset` |
 | An HBAR transfer list must be present. | Missing `transfers` is refused rather than treated as a zero-value transfer. | `reviewSchedule refuses a missing HBAR transfer list` |
 | **Roadmap — altered body:** the transfer has exactly one treasury debit and one recipient credit. | The validator requires exactly two balance adjustments. | `reviewSchedule refuses an extra balance adjustment` |
 | **Roadmap — altered body:** neither required side of the transfer can be omitted. | Fewer than two balance adjustments are refused. | `reviewSchedule refuses fewer than two balance adjustments` |
@@ -61,6 +63,7 @@ of these controls has been exercised against the live network.
 | Account identities must be canonical numeric Hedera IDs. | The account-ID decoder rejects aliases instead of resolving or comparing them ambiguously. | `reviewSchedule refuses alias account identifiers` |
 | **Roadmap — wrong recipient:** the sole recipient must be owner-authorized. | The normalized recipient account ID must occur in `recipientAllowlist`. | `reviewSchedule refuses a recipient outside the allowlist` |
 | **Roadmap — over-cap:** an allowed recipient still cannot receive more than authorized. | The positive recipient adjustment must be no greater than `maxAmountTinybars`. | `reviewSchedule refuses an amount above the mandate cap` |
+| HTS cannot be approved without independent custom-fee proof. | The current resolver has no consensus-resolved token fee state, so even a structurally valid HTS transfer is refused after all shape, account, flag, conservation, allowlist, and cap checks. `maxCustomFees` must also remain empty. | `reviewSchedule refuses structurally valid HTS until custom fees can be verified`<br>`reviewSchedule refuses maxCustomFees for an HTS transfer` |
 
 ## Payment
 
@@ -68,6 +71,7 @@ of these controls has been exercised against the live network.
 | --- | --- | --- |
 | No treasury authorization signer may pay for review. | The decoded payment payer is compared with the owner, agent, and guard authorization identities before facilitator verification or settlement. | `payment gate refuses every treasury authorization signer before settlement` |
 | The treasury account itself may not be the payment payer. | The decoded payer account ID is compared with the treasury account before settlement. | `payment gate refuses the treasury account as payer before settlement` |
+| The treasury account may not fund review through an HTS debit. | Every negative entry in every decoded token transfer list is compared with the treasury account before settlement. | `INVARIANT: a payment whose token sender is the treasury account must be refused before settlement` |
 | A valid payment payload contains no treasury authorization identity. | The narrated payer uses a separate key and account; decoded payload inspection checks that no treasury account or authorization key appears. | `invariant: the decoded payment payload contains no treasury authorization identity` |
 | The 402 challenge exposes only the operational payment destination. | Payment requirements contain the operational `payTo` account and omit treasury authorization keys and operational key material. | `invariant: the challenge exposes only the operational payment account` |
 
@@ -111,7 +115,8 @@ of these controls has been exercised against the live network.
 - The installed decoder cannot reveal fields unknown to its schema. That is why the
   network-version allowlist fails closed: a version change invalidates the reviewed
   decoder assumptions instead of silently approving.
-- Transfers are HBAR-only. Token transfers and token custom-fee value movement are
-  outside the validated model and are refused.
-- These invariants have 233 passing offline tests, but none has been exercised against
+- HTS transfer structure is validated, but approval remains disabled. Token custom-fee
+  state is outside the current schedule-resolution context and every otherwise valid HTS
+  transfer is refused until empty, immutable fees can be verified from consensus.
+- These invariants have 271 passing offline Node tests, but none has been exercised against
   the live Hedera network. The repository has no Hedera credentials.

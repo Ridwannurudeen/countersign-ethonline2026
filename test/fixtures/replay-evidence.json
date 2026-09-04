@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "1",
+  "guardPublicKeyPrefix": "bbbbbbbbbbbbbbbb",
+  "records": [
+    {
+      "kind": "review",
+      "origin": "operator",
+      "scheduleId": "0.0.7001",
+      "outcome": "refused",
+      "decidingInvariant": "recipient is on the mandate allowlist",
+      "mandateDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "mandatePolicy": {
+        "asset": { "kind": "hbar" },
+        "recipientAllowlist": ["0.0.1002"],
+        "maxAmountTinybars": "50000000",
+        "validFromEpochSeconds": "1788508800",
+        "expiresAtEpochSeconds": "1788512400"
+      },
+      "settlementId": "0.0.7162784@1788509000.000000001",
+      "settlementAmountTinybars": "1000000",
+      "paymentPayerAccountId": "0.0.8001",
+      "mirrorNodeUrl": "https://testnet.mirrornode.hedera.com/api/v1/schedules/0.0.7001",
+      "paymentPayerMirrorNodeUrl": "https://testnet.mirrornode.hedera.com/api/v1/accounts/0.0.8001"
+    }
+  ],
+  "setupTransactions": [],
+  "counts": {
+    "external": {
+      "reviewCount": 0,
+      "approvalCount": 0,
+      "refusalCount": 0,
+      "distinctPayerAccountCount": 0
+    },
+    "operator": {
+      "reviewCount": 1,
+      "approvalCount": 0,
+      "refusalCount": 1
+    }
+  }
+}

@@ -1,7 +1,7 @@
 import type { proto } from "@hiero-ledger/proto";
 import { PublicKey, type ScheduleInfo } from "@hiero-ledger/sdk";
 
-import { mandateDigest, type Mandate } from "./mandate.ts";
+import { mandateAsset, mandateDigest, type Mandate } from "./mandate.ts";
 
 const SCHEDULABLE_TRANSACTION_VARIANTS = [
   "contractCall",
@@ -63,6 +63,12 @@ const SCHEDULABLE_BODY_FIELDS = new Set<string>([
 ]);
 const CRYPTO_TRANSFER_FIELDS = new Set(["transfers", "tokenTransfers"]);
 const TRANSFER_LIST_FIELDS = new Set(["accountAmounts"]);
+const TOKEN_TRANSFER_LIST_FIELDS = new Set([
+  "token",
+  "transfers",
+  "nftTransfers",
+  "expectedDecimals",
+]);
 const BALANCE_ADJUSTMENT_FIELDS = new Set([
   "accountID",
   "amount",
@@ -71,6 +77,7 @@ const BALANCE_ADJUSTMENT_FIELDS = new Set([
   "prePostTxAllowanceHook",
 ]);
 const ACCOUNT_ID_FIELDS = new Set(["shardNum", "realmNum", "accountNum", "alias"]);
+const TOKEN_ID_FIELDS = new Set(["shardNum", "realmNum", "tokenNum"]);
 
 interface SemanticVersionTriple {
   readonly major: number;
@@ -193,6 +200,28 @@ function numericAccountId(accountId: proto.IAccountID | null | undefined): strin
   }
 
   return `${shard}.${realm}.${account}`;
+}
+
+function numericTokenId(tokenId: proto.ITokenID | null | undefined): string | null {
+  if (tokenId == null) {
+    return null;
+  }
+
+  if (unsupportedField(tokenId, TOKEN_ID_FIELDS) != null) {
+    return null;
+  }
+
+  const shard = integerValue(tokenId.shardNum);
+  const realm = integerValue(tokenId.realmNum);
+  const token = integerValue(tokenId.tokenNum);
+  if (shard == null || realm == null || token == null) {
+    return null;
+  }
+  if (shard < 0n || realm < 0n || token < 0n) {
+    return null;
+  }
+
+  return `${shard}.${realm}.${token}`;
 }
 
 function includesPublicKey(
@@ -450,50 +479,139 @@ export function reviewSchedule(
     invariant: "cryptoTransfer body contains only reviewed fields",
     passed: true,
   });
-  denialCase = check(
-    "token transfers are empty",
-    cryptoTransfer.tokenTransfers != null &&
-      cryptoTransfer.tokenTransfers.length === 0,
-    "token transfers must be empty",
-  );
-  if (denialCase !== false) return denialCase;
+  const asset = mandateAsset(mandate);
+  let adjustments: proto.IAccountAmount[] | null | undefined;
+  let transferLabel: "HBAR" | "token";
+  if (asset.kind === "hbar") {
+    denialCase = check(
+      "token transfers are empty for an HBAR mandate",
+      cryptoTransfer.tokenTransfers != null &&
+        cryptoTransfer.tokenTransfers.length === 0,
+      "token transfers must be empty for an HBAR mandate",
+    );
+    if (denialCase !== false) return denialCase;
 
-  const transferList = cryptoTransfer.transfers;
-  if (transferList == null) {
-    reportCheck?.({
-      invariant: "HBAR transfer list is present",
-      passed: false,
-    });
-    return refusal("HBAR transfer list is missing");
-  }
-  reportCheck?.({ invariant: "HBAR transfer list is present", passed: true });
-  const unsupportedTransferListField = unsupportedField(
-    transferList,
-    TRANSFER_LIST_FIELDS,
-  );
-  if (unsupportedTransferListField != null) {
+    const transferList = cryptoTransfer.transfers;
+    if (transferList == null) {
+      reportCheck?.({
+        invariant: "HBAR transfer list is present",
+        passed: false,
+      });
+      return refusal("HBAR transfer list is missing");
+    }
+    reportCheck?.({ invariant: "HBAR transfer list is present", passed: true });
+    const unsupportedTransferListField = unsupportedField(
+      transferList,
+      TRANSFER_LIST_FIELDS,
+    );
+    if (unsupportedTransferListField != null) {
+      reportCheck?.({
+        invariant: "HBAR transfer list contains only reviewed fields",
+        passed: false,
+      });
+      return refusal(
+        `unsupported HBAR transfer-list field: ${unsupportedTransferListField}`,
+      );
+    }
     reportCheck?.({
       invariant: "HBAR transfer list contains only reviewed fields",
+      passed: true,
+    });
+    adjustments = transferList.accountAmounts;
+    transferLabel = "HBAR";
+  } else {
+    const hbarTransferList = cryptoTransfer.transfers;
+    if (hbarTransferList != null) {
+      const unsupportedTransferListField = unsupportedField(
+        hbarTransferList,
+        TRANSFER_LIST_FIELDS,
+      );
+      if (unsupportedTransferListField != null) {
+        reportCheck?.({
+          invariant: "empty HBAR transfer list contains only reviewed fields",
+          passed: false,
+        });
+        return refusal(
+          `unsupported HBAR transfer-list field: ${unsupportedTransferListField}`,
+        );
+      }
+    }
+    denialCase = check(
+      "HBAR transfers are empty for an HTS mandate",
+      hbarTransferList == null ||
+        hbarTransferList.accountAmounts == null ||
+        hbarTransferList.accountAmounts.length === 0,
+      "HBAR transfers must be empty for an HTS mandate",
+    );
+    if (denialCase !== false) return denialCase;
+
+    const tokenTransfers = cryptoTransfer.tokenTransfers;
+    if (tokenTransfers == null || tokenTransfers.length !== 1) {
+      reportCheck?.({
+        invariant: "HTS transfer contains exactly one token transfer list",
+        passed: false,
+      });
+      return refusal("HTS transfer must contain exactly one token transfer list");
+    }
+    reportCheck?.({
+      invariant: "HTS transfer contains exactly one token transfer list",
+      passed: true,
+    });
+    const tokenTransfer = tokenTransfers[0];
+    if (tokenTransfer == null) {
+      return refusal("HTS transfer must contain exactly one token transfer list");
+    }
+    const unsupportedTokenTransferField = unsupportedField(
+      tokenTransfer,
+      TOKEN_TRANSFER_LIST_FIELDS,
+    );
+    if (unsupportedTokenTransferField != null) {
+      reportCheck?.({
+        invariant: "token transfer list contains only reviewed fields",
+        passed: false,
+      });
+      return refusal(
+        `unsupported token transfer-list field: ${unsupportedTokenTransferField}`,
+      );
+    }
+    reportCheck?.({
+      invariant: "token transfer list contains only reviewed fields",
+      passed: true,
+    });
+    denialCase = check(
+      "token ID matches the mandate asset",
+      numericTokenId(tokenTransfer.token) === asset.tokenId,
+      "token ID does not match the mandate asset",
+    );
+    if (denialCase !== false) return denialCase;
+    denialCase = check(
+      "token transfer contains no NFT transfers",
+      tokenTransfer.nftTransfers != null &&
+        tokenTransfer.nftTransfers.length === 0,
+      "token transfer must not contain NFT transfers",
+    );
+    if (denialCase !== false) return denialCase;
+    denialCase = check(
+      "token transfer does not set expectedDecimals",
+      tokenTransfer.expectedDecimals == null,
+      "token transfer expectedDecimals is outside the reviewed model",
+    );
+    if (denialCase !== false) return denialCase;
+    adjustments = tokenTransfer.transfers;
+    transferLabel = "token";
+  }
+
+  if (adjustments == null || adjustments.length !== 2) {
+    reportCheck?.({
+      invariant: `${transferLabel} transfer contains exactly two balance adjustments`,
       passed: false,
     });
     return refusal(
-      `unsupported HBAR transfer-list field: ${unsupportedTransferListField}`,
+      `${transferLabel} transfer must contain exactly two balance adjustments`,
     );
   }
   reportCheck?.({
-    invariant: "HBAR transfer list contains only reviewed fields",
-    passed: true,
-  });
-  const adjustments = transferList.accountAmounts;
-  if (adjustments == null || adjustments.length !== 2) {
-    reportCheck?.({
-      invariant: "HBAR transfer contains exactly two balance adjustments",
-      passed: false,
-    });
-    return refusal("HBAR transfer must contain exactly two balance adjustments");
-  }
-  reportCheck?.({
-    invariant: "HBAR transfer contains exactly two balance adjustments",
+    invariant: `${transferLabel} transfer contains exactly two balance adjustments`,
     passed: true,
   });
 
@@ -636,6 +754,16 @@ export function reviewSchedule(
     "transfer amount exceeds mandate cap",
   );
   if (denialCase !== false) return denialCase;
+
+  if (asset.kind === "hts") {
+    reportCheck?.({
+      invariant: "HTS custom-fee state is verified as empty and immutable",
+      passed: false,
+    });
+    return refusal(
+      "HTS custom-fee state is not verified; token transfers are refused",
+    );
+  }
 
   return {
     approved: true,

@@ -1,0 +1,36 @@
+{
+  "paymentRequirements": {
+    "scheme": "exact",
+    "network": "hedera:testnet",
+    "asset": "0.0.0",
+    "amount": "123456",
+    "payTo": "0.0.1002",
+    "maxTimeoutSeconds": 60,
+    "extra": {
+      "feePayer": "0.0.7162784"
+    }
+  },
+  "payload": {
+    "transaction": "KqcBCj0KFAoLCLmm7NQGEK6K9XkSBRigl7UDEgIYAxiAwtcvIgIIeHIYChYKCQoDGOkHEP+IDwoJCgMY6gcQgIkPEmYKZAogebVWLo/mVPlAeLES6KmLp5AfhTrmlb7X4OORC60ElmQaQE9GPApuDASgXRXjoDt4QfdwaPogEz+/d15qiprQ8d0iq+foyzSQQM07SBEeuXkgvYtcAqXPS5Aje/9o7+C70Q4="
+  },
+  "expectedDecode": {
+    "transactionType": "T",
+    "transactionId": "0.0.7162784@1788547897.255673646",
+    "transactionIdAccountId": "0.0.7162784",
+    "hasNonTransferOperations": false,
+    "hbarTransfers": [
+      {
+        "accountId": "0.0.1001",
+        "amount": "-123456"
+      },
+      {
+        "accountId": "0.0.1002",
+        "amount": "123456"
+      }
+    ],
+    "tokenTransfers": {},
+    "signerKeys": [
+      "79b5562e8fe654f94078b112e8a98ba7901f853ae695bed7e0e3910bad049664"
+    ]
+  }
+}

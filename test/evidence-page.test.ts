@@ -3,8 +3,23 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 interface EvidenceFile {
+  readonly schemaVersion: "1";
   readonly guardPublicKeyPrefix: string;
   readonly records: readonly unknown[];
+  readonly setupTransactions: readonly unknown[];
+  readonly counts: {
+    readonly external: {
+      readonly reviewCount: number;
+      readonly approvalCount: number;
+      readonly refusalCount: number;
+      readonly distinctPayerAccountCount: number;
+    };
+    readonly operator: {
+      readonly reviewCount: number;
+      readonly approvalCount: number;
+      readonly refusalCount: number;
+    };
+  };
 }
 
 const pageSource = await readFile(
@@ -17,8 +32,23 @@ const evidence = JSON.parse(
 
 test("the checked-in empty state says that no reviews are recorded", () => {
   assert.deepEqual(evidence, {
+    schemaVersion: "1",
     guardPublicKeyPrefix: "",
     records: [],
+    setupTransactions: [],
+    counts: {
+      external: {
+        reviewCount: 0,
+        approvalCount: 0,
+        refusalCount: 0,
+        distinctPayerAccountCount: 0,
+      },
+      operator: {
+        reviewCount: 0,
+        approvalCount: 0,
+        refusalCount: 0,
+      },
+    },
   });
   assert.match(
     pageSource,

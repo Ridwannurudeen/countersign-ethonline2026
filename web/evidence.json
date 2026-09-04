@@ -1,4 +1,19 @@
 {
+  "schemaVersion": "1",
   "guardPublicKeyPrefix": "",
-  "records": []
+  "records": [],
+  "setupTransactions": [],
+  "counts": {
+    "external": {
+      "reviewCount": 0,
+      "approvalCount": 0,
+      "refusalCount": 0,
+      "distinctPayerAccountCount": 0
+    },
+    "operator": {
+      "reviewCount": 0,
+      "approvalCount": 0,
+      "refusalCount": 0
+    }
+  }
 }
