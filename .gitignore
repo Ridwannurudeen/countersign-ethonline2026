@@ -7,3 +7,4 @@ dist/
 .DS_Store
 .playwright-mcp/
 var/
+.tmp-*/
