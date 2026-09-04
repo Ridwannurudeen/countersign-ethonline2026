@@ -6,7 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 
 import { proto } from "@hiero-ledger/proto";
-import { Client, KeyList, PrivateKey } from "@hiero-ledger/sdk";
+import { Client, KeyList, PrivateKey, PublicKey } from "@hiero-ledger/sdk";
 
 import {
   canonicalMandateBytes,
@@ -36,7 +36,8 @@ import type { VerdictRecord } from "../src/verdict-log.ts";
 const ownerKey = PrivateKey.generateED25519();
 const agentPrivateKey = PrivateKey.generateED25519();
 const agentKey = agentPrivateKey.publicKey;
-const guardKey = PrivateKey.generateED25519().publicKey;
+const guardPrivateKey = PrivateKey.generateED25519();
+const guardKey = guardPrivateKey.publicKey;
 const operationalKey = PrivateKey.generateED25519().publicKey;
 const treasuryKey = new KeyList(
   [ownerKey.publicKey, new KeyList([agentKey, guardKey], 2)],
@@ -158,6 +159,7 @@ function harness(
   const dependencies: ReviewServerDependencies = {
     tenantId: mandate.tenantId,
     ownerPublicKey: ownerKey.publicKey,
+    guardPublicKey: guardKey,
     paymentGate: {
       async review() {
         events.push("payment");
@@ -1255,4 +1257,62 @@ test("production server generates participant identifiers from HCS-14 identities
   } finally {
     client.close();
   }
+});
+
+async function getGuard(
+  dependencies: ReviewServerDependencies,
+): Promise<{ response: Response; json: Record<string, unknown> }> {
+  const server = createReviewServer(dependencies);
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+
+  try {
+    const address = server.address() as AddressInfo;
+    const response = await fetch(`http://127.0.0.1:${address.port}/guard`);
+    const json = (await response.json()) as Record<string, unknown>;
+    return { response, json };
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => (error == null ? resolve() : reject(error)));
+    });
+  }
+}
+
+test("GET /guard returns the guard public key and HCS-14 identifier", async () => {
+  const state = harness();
+  const { response, json } = await getGuard(state.dependencies);
+
+  assert.equal(response.status, 200);
+  assert.equal(json.guardPublicKey, guardKey.toString());
+  assert.equal(
+    json.guardIdentifier,
+    state.dependencies.participantIdentifiers.guard,
+  );
+  assert.equal(
+    PublicKey.fromString(String(json.guardPublicKey)).equals(guardKey),
+    true,
+  );
+});
+
+test("INVARIANT: the public guard identity response never contains private key material or tenant data", async () => {
+  const state = harness();
+  const { json } = await getGuard(state.dependencies);
+  const serialized = JSON.stringify(json);
+
+  assert.deepEqual(Object.keys(json).sort(), [
+    "guardIdentifier",
+    "guardPublicKey",
+  ]);
+  assert.equal(serialized.includes(guardPrivateKey.toStringRaw()), false);
+  assert.equal(serialized.includes(state.dependencies.tenantId), false);
+});
+
+test("GET /guard succeeds without a payment header", async () => {
+  const state = harness();
+  const { response } = await getGuard(state.dependencies);
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(state.events, []);
 });

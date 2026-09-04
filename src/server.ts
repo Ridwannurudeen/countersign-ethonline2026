@@ -85,6 +85,7 @@ type ReviewResponseBody = ReviewResponseOutcome & {
 export interface ReviewServerDependencies {
   tenantId: string;
   ownerPublicKey: PublicKey;
+  guardPublicKey: PublicKey;
   paymentGate: PaymentGate;
   lookupCompletedReview(
     reservation: MandateReviewReservation,
@@ -368,6 +369,13 @@ async function handleReviewRequest(
   dependencies: ReviewServerDependencies,
 ): Promise<void> {
   const path = new URL(incoming.url ?? "/", "http://localhost").pathname;
+  if (path === "/guard" && incoming.method === "GET") {
+    writeJson(response, 200, {
+      guardPublicKey: dependencies.guardPublicKey.toString(),
+      guardIdentifier: dependencies.participantIdentifiers.guard,
+    });
+    return;
+  }
   if (path !== "/review") {
     throw new RequestError(404, "not found");
   }
@@ -817,6 +825,7 @@ export async function createProductionReviewServer(
   return createReviewServer({
     tenantId: config.tenantId,
     ownerPublicKey: config.ownerPublicKey,
+    guardPublicKey: config.guardPublicKey,
     paymentGate,
     lookupCompletedReview(reservation) {
       return getCompletedMandateReview(
