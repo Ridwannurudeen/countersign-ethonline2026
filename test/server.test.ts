@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import type { AddressInfo } from "node:net";
+import { mkdirSync, rmSync } from "node:fs";
+import { connect, type AddressInfo } from "node:net";
+import { resolve } from "node:path";
 import test from "node:test";
 
 import { proto } from "@hiero-ledger/proto";
@@ -15,6 +17,10 @@ import type {
   ReviewableScheduleInfo,
 } from "../src/review-schedule.ts";
 import {
+  ReplayStoreContentionError,
+  type CompletedMandateReview,
+} from "../src/replay-store.ts";
+import {
   MAX_REVIEW_BODY_BYTES,
   createProductionReviewServer,
   createReviewServer,
@@ -28,6 +34,10 @@ const ownerKey = PrivateKey.generateED25519();
 const agentKey = PrivateKey.generateED25519().publicKey;
 const guardKey = PrivateKey.generateED25519().publicKey;
 const operationalKey = PrivateKey.generateED25519().publicKey;
+const treasuryKey = new KeyList(
+  [ownerKey.publicKey, new KeyList([agentKey, guardKey], 2)],
+  1,
+);
 
 const mandate: Mandate = {
   tenantId: "treasury-1",
@@ -132,6 +142,7 @@ interface Harness {
   dependencies: ReviewServerDependencies;
   events: string[];
   verdicts: VerdictRecord[];
+  completions: CompletedMandateReview[];
 }
 
 function harness(
@@ -139,6 +150,7 @@ function harness(
 ): Harness {
   const events: string[] = [];
   const verdicts: VerdictRecord[] = [];
+  const completions: CompletedMandateReview[] = [];
   const dependencies: ReviewServerDependencies = {
     ownerPublicKey: ownerKey.publicKey,
     paymentGate: {
@@ -155,6 +167,10 @@ function harness(
       events.push("resolve");
       return resolvedSchedule();
     },
+    lookupCompletedReview() {
+      events.push("lookup");
+      return null;
+    },
     reserveNonce() {
       events.push("reserve");
       return { status: "reserved" };
@@ -162,8 +178,9 @@ function harness(
     async submitScheduleApproval() {
       events.push("submit");
     },
-    completeNonce() {
+    completeNonce(_reservation, completion) {
       events.push("complete");
+      completions.push(completion);
     },
     verdictLog: {
       async record(record) {
@@ -184,7 +201,7 @@ function harness(
     ...overrides,
   };
 
-  return { dependencies, events, verdicts };
+  return { dependencies, events, verdicts, completions };
 }
 
 async function postReview(
@@ -279,6 +296,53 @@ test("POST /review limits the request body before payment", async () => {
   assert.deepEqual(state.events, []);
 });
 
+test("POST /review closes an oversized chunked body before its terminating chunk", async () => {
+  const state = harness();
+  const server = createReviewServer(state.dependencies);
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+
+  try {
+    const address = server.address() as AddressInfo;
+    const rawResponse = await new Promise<string>((resolve, reject) => {
+      const socket = connect(address.port, "127.0.0.1");
+      const responseChunks: Buffer[] = [];
+      const timeout = setTimeout(() => {
+        socket.destroy();
+        reject(new Error("server did not stop reading the oversized body"));
+      }, 1_000);
+
+      socket.once("connect", () => {
+        const oversizedChunk = "x".repeat(MAX_REVIEW_BODY_BYTES + 1);
+        socket.write(
+          "POST /review HTTP/1.1\r\n" +
+            `Host: 127.0.0.1:${address.port}\r\n` +
+            "Content-Type: application/json\r\n" +
+            "Transfer-Encoding: chunked\r\n" +
+            "Connection: keep-alive\r\n\r\n" +
+            `${oversizedChunk.length.toString(16)}\r\n${oversizedChunk}\r\n`,
+        );
+      });
+      socket.on("data", (chunk: Buffer) => responseChunks.push(chunk));
+      socket.once("error", reject);
+      socket.once("close", () => {
+        clearTimeout(timeout);
+        resolve(Buffer.concat(responseChunks).toString("utf8"));
+      });
+    });
+
+    assert.match(rawResponse, /^HTTP\/1\.1 413 /);
+    assert.match(rawResponse, /Connection: close/i);
+    assert.deepEqual(state.events, []);
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => (error == null ? resolve() : reject(error)));
+    });
+  }
+});
+
 test("POST /review returns the payment challenge without resolving consensus", async () => {
   const state = harness({
     paymentGate: {
@@ -332,7 +396,7 @@ test("POST /review retains settlement headers when consensus resolution errors",
   assert.equal(response.status, 500);
   assert.equal(response.headers.get("payment-response"), "settled");
   assert.deepEqual(json, { error: "internal server error" });
-  assert.deepEqual(state.events, ["payment", "resolve"]);
+  assert.deepEqual(state.events, ["payment", "lookup", "resolve"]);
 });
 
 test("POST /review records a paid authorization refusal without reserving", async () => {
@@ -381,7 +445,7 @@ test("POST /review records a paid authorization refusal without reserving", asyn
     mirrorNodeUrl:
       "https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.9001/messages/4",
   });
-  assert.deepEqual(state.events, ["payment", "resolve", "record"]);
+  assert.deepEqual(state.events, ["payment", "lookup", "resolve", "record"]);
   assert.deepEqual(reviewChecks.at(-1), {
     invariant: "recipient is on the mandate allowlist",
     passed: false,
@@ -420,7 +484,13 @@ test("POST /review records a replay refusal without submitting approval", async 
     json.reason,
     "nonce must be greater than the tenant high-water mark",
   );
-  assert.deepEqual(state.events, ["payment", "resolve", "reserve", "record"]);
+  assert.deepEqual(state.events, [
+    "payment",
+    "lookup",
+    "resolve",
+    "reserve",
+    "record",
+  ]);
   assert.equal(state.verdicts[0]?.outcome, "refused");
 });
 
@@ -444,8 +514,71 @@ test("POST /review refuses a pending retry without submitting approval", async (
     mirrorNodeUrl:
       "https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.9001/messages/4",
   });
-  assert.deepEqual(state.events, ["payment", "resolve", "reserve", "record"]);
+  assert.deepEqual(state.events, [
+    "payment",
+    "lookup",
+    "resolve",
+    "reserve",
+    "record",
+  ]);
   assert.equal(state.verdicts[0]?.outcome, "refused");
+});
+
+test("POST /review returns a retryable response for replay-store contention", async () => {
+  const state = harness({
+    reserveNonce() {
+      state.events.push("reserve");
+      throw new ReplayStoreContentionError(new Error("database is locked"));
+    },
+  });
+
+  const { response, json } = await postReview(state.dependencies, requestBody());
+
+  assert.equal(response.status, 503);
+  assert.equal(response.headers.get("retry-after"), "1");
+  assert.deepEqual(json, {
+    error: "replay database is busy; retry the review",
+  });
+  assert.deepEqual(state.events, ["payment", "lookup", "resolve", "reserve"]);
+  assert.deepEqual(state.verdicts, []);
+});
+
+test("POST /review replays a completed approval before pending schedule validation", async () => {
+  const state = harness({
+    lookupCompletedReview() {
+      state.events.push("lookup");
+      return {
+        outcome: "approved",
+        recipientAccountId: "0.0.1002",
+        amountTinybars: "25000000",
+        settlementId: "0.0.8001@1788509000.000000001",
+        mirrorNodeUrl:
+          "https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.9001/messages/4",
+      };
+    },
+    async resolveSchedule() {
+      state.events.push("resolve");
+      return resolvedSchedule(
+        schedule({ executed: { seconds: 1788509001n, nanos: 0n } }),
+      );
+    },
+  });
+
+  const { response, json } = await postReview(state.dependencies, requestBody());
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(json, {
+    outcome: "approved",
+    recipientAccountId: "0.0.1002",
+    amountTinybars: "25000000",
+    scheduleId: "0.0.7001",
+    mandateDigest: digest,
+    settlementId: "0.0.8001@1788509000.000000001",
+    mirrorNodeUrl:
+      "https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.9001/messages/4",
+  });
+  assert.deepEqual(state.events, ["payment", "lookup"]);
+  assert.deepEqual(state.verdicts, []);
 });
 
 test("POST /review completes the approved orchestration in order", async () => {
@@ -469,13 +602,24 @@ test("POST /review completes the approved orchestration in order", async () => {
   });
   assert.deepEqual(state.events, [
     "payment",
+    "lookup",
     "resolve",
     "reserve",
     "submit",
-    "complete",
     "record",
+    "complete",
   ]);
   assert.equal(state.verdicts[0]?.outcome, "approved");
+  assert.deepEqual(state.completions, [
+    {
+      outcome: "approved",
+      recipientAccountId: "0.0.1002",
+      amountTinybars: "25000000",
+      settlementId: "0.0.8001@1788509000.000000001",
+      mirrorNodeUrl:
+        "https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.9001/messages/4",
+    },
+  ]);
 });
 
 const productionConfig: ProductionReviewServerConfig = {
@@ -531,11 +675,30 @@ function productionServices(
   overrides: Partial<ProductionReviewServerServices> = {},
 ): ProductionReviewServerServices {
   return {
-    async loadOperationalAccount() {
+    async executeAccountInfoQuery(_client, query) {
+      const accountId = query.accountId?.toString();
+      if (accountId === undefined) {
+        throw new Error("account query must contain an AccountID");
+      }
+      if (accountId === productionConfig.payment.operationalAccount.accountId) {
+        return { accountId, key: operationalKey };
+      }
+      if (accountId === productionConfig.treasuryAccountId) {
+        return { accountId, key: treasuryKey };
+      }
+      if (accountId === productionConfig.expectedAgentAccountId) {
+        return { accountId, key: agentKey };
+      }
+      throw new Error(`unexpected account lookup: ${accountId}`);
+    },
+    async executeNetworkVersionInfoQuery() {
       return {
-        accountId: productionConfig.payment.operationalAccount.accountId,
-        key: operationalKey,
+        protobufVersion: { major: 0, minor: 64, patch: 0 },
+        servicesVersion: { major: 0, minor: 64, patch: 0 },
       };
+    },
+    async executeScheduleInfoQuery() {
+      return schedule();
     },
     async createPaymentGate() {
       return {
@@ -582,7 +745,7 @@ test("production server requires the client operator to use the guard key", asyn
             client,
             productionConfig,
             productionServices({
-              async loadOperationalAccount() {
+              async executeAccountInfoQuery() {
                 accountLookupCalled = true;
                 return {
                   accountId: productionConfig.payment.operationalAccount.accountId,
@@ -594,6 +757,143 @@ test("production server requires the client operator to use the guard key", asyn
           /client operator key must equal the configured guard key/,
         );
         assert.equal(accountLookupCalled, false);
+      } finally {
+        client.close();
+      }
+    });
+  }
+});
+
+test("production server requires pairwise-distinct authorization keys", async (t) => {
+  for (const [name, config] of [
+    [
+      "owner and agent",
+      { ...productionConfig, agentPublicKey: ownerKey.publicKey },
+    ],
+    [
+      "owner and guard",
+      { ...productionConfig, ownerPublicKey: guardKey },
+    ],
+    [
+      "agent and guard",
+      { ...productionConfig, guardPublicKey: agentKey },
+    ],
+  ] as const) {
+    await t.test(name, async () => {
+      const client = configuredClient(config.guardPublicKey);
+      try {
+        await assert.rejects(
+          createProductionReviewServer(client, config, productionServices()),
+          /owner, agent, and guard keys must be pairwise distinct/,
+        );
+      } finally {
+        client.close();
+      }
+    });
+  }
+});
+
+test("production server requires the exact nested treasury authorization tree", async (t) => {
+  const innerKey = new KeyList([agentKey, guardKey], 2);
+  for (const [name, key] of [
+    ["single key", ownerKey.publicKey],
+    ["outer threshold", new KeyList([ownerKey.publicKey, innerKey], 2)],
+    [
+      "missing owner branch",
+      new KeyList([operationalKey, innerKey], 1),
+    ],
+    [
+      "inner threshold",
+      new KeyList(
+        [ownerKey.publicKey, new KeyList([agentKey, guardKey], 1)],
+        1,
+      ),
+    ],
+    [
+      "inner membership",
+      new KeyList(
+        [ownerKey.publicKey, new KeyList([agentKey, operationalKey], 2)],
+        1,
+      ),
+    ],
+    [
+      "extra outer branch",
+      new KeyList([ownerKey.publicKey, innerKey, operationalKey], 1),
+    ],
+  ] as const) {
+    await t.test(name, async () => {
+      const client = configuredClient();
+      try {
+        await assert.rejects(
+          createProductionReviewServer(
+            client,
+            productionConfig,
+            productionServices({
+              async executeAccountInfoQuery(client, query) {
+                if (
+                  query.accountId?.toString() ===
+                  productionConfig.treasuryAccountId
+                ) {
+                  return {
+                    accountId: productionConfig.treasuryAccountId,
+                    key,
+                  };
+                }
+                return productionServices().executeAccountInfoQuery(
+                  client,
+                  query,
+                );
+              },
+            }),
+          ),
+          /treasury account must use the configured nested authorization tree/,
+        );
+      } finally {
+        client.close();
+      }
+    });
+  }
+});
+
+test("production server binds the configured agent account to the agent key", async (t) => {
+  for (const [name, accountId, key, reason] of [
+    [
+      "different account",
+      "0.0.2002",
+      agentKey,
+      /returned agent account does not match the configured account/,
+    ],
+    [
+      "different key",
+      productionConfig.expectedAgentAccountId,
+      operationalKey,
+      /agent account key does not match the configured agent key/,
+    ],
+  ] as const) {
+    await t.test(name, async () => {
+      const client = configuredClient();
+      try {
+        await assert.rejects(
+          createProductionReviewServer(
+            client,
+            productionConfig,
+            productionServices({
+              async executeAccountInfoQuery(client, query) {
+                if (
+                  query.accountId?.toString() ===
+                  productionConfig.expectedAgentAccountId
+                ) {
+                  return { accountId, key };
+                }
+                return productionServices().executeAccountInfoQuery(
+                  client,
+                  query,
+                );
+              },
+            }),
+          ),
+          reason,
+        );
       } finally {
         client.close();
       }
@@ -618,11 +918,18 @@ test("production server verifies the operational payment account key from consen
             client,
             productionConfig,
             productionServices({
-              async loadOperationalAccount() {
-                return {
-                  accountId: productionConfig.payment.operationalAccount.accountId,
-                  key,
-                };
+              async executeAccountInfoQuery(client, query) {
+                const accountId = query.accountId?.toString();
+                if (
+                  accountId ===
+                  productionConfig.payment.operationalAccount.accountId
+                ) {
+                  return { accountId, key };
+                }
+                return productionServices().executeAccountInfoQuery(
+                  client,
+                  query,
+                );
               },
             }),
           ),
@@ -644,8 +951,17 @@ test("production server verifies the operational payment account ID from consens
         client,
         productionConfig,
         productionServices({
-          async loadOperationalAccount() {
-            return { accountId: "0.0.9002", key: operationalKey };
+          async executeAccountInfoQuery(client, query) {
+            const accountId = query.accountId?.toString();
+            if (
+              accountId === productionConfig.payment.operationalAccount.accountId
+            ) {
+              return { accountId: "0.0.9002", key: operationalKey };
+            }
+            return productionServices().executeAccountInfoQuery(
+              client,
+              query,
+            );
           },
         }),
       ),
@@ -660,6 +976,8 @@ test("production server keeps the operational payment account separate", async (
   for (const [name, accountId, publicKey] of [
     ["authorization key", "0.0.9001", guardKey],
     ["treasury account", "0.0.1001", operationalKey],
+    ["agent account", "0.0.2001", operationalKey],
+    ["guard account", "0.0.3001", operationalKey],
   ] as const) {
     await t.test(name, async () => {
       const client = configuredClient();
@@ -676,13 +994,9 @@ test("production server keeps the operational payment account separate", async (
           createProductionReviewServer(
             client,
             config,
-            productionServices({
-              async loadOperationalAccount() {
-                return { accountId, key: publicKey };
-              },
-            }),
+            productionServices(),
           ),
-          /operational payment key must be separate from authorization keys/,
+          /operational payment identity must be separate from authorization identities/,
         );
       } finally {
         client.close();
@@ -700,9 +1014,13 @@ test("production factory initializes adapters and returns a hostable server with
       client,
       productionConfig,
       productionServices({
-        async loadOperationalAccount(_client, accountId) {
+        async executeAccountInfoQuery(_client, query) {
+          const accountId = query.accountId?.toString();
+          if (accountId === undefined) {
+            throw new Error("account query must contain an AccountID");
+          }
           events.push(`account:${accountId}`);
-          return { accountId, key: operationalKey };
+          return productionServices().executeAccountInfoQuery(_client, query);
         },
         async createPaymentGate(config) {
           events.push(`payment:${config.operationalAccount.accountId}`);
@@ -722,11 +1040,117 @@ test("production factory initializes adapters and returns a hostable server with
     assert.equal(server.maxHeadersCount, 50);
     assert.deepEqual(events, [
       "account:0.0.9001",
+      "account:0.0.1001",
+      "account:0.0.2001",
       "payment:0.0.9001",
       "verdict:0.0.9100",
     ]);
   } finally {
     client.close();
+  }
+});
+
+test("production schedule resolution pins both version reads and the schedule read to one node", async (t) => {
+  for (const [name, versions] of [
+    [
+      "version before the schedule is outside the audited version",
+      [
+        { major: 0, minor: 65, patch: 0 },
+        { major: 0, minor: 64, patch: 0 },
+      ],
+    ],
+    [
+      "version changes after the schedule read",
+      [
+        { major: 0, minor: 64, patch: 0 },
+        { major: 0, minor: 65, patch: 0 },
+      ],
+    ],
+  ] as const) {
+    await t.test(name, async () => {
+      const databaseDirectory = resolve("var");
+      mkdirSync(databaseDirectory, { recursive: true });
+      const databasePath = resolve(
+        databaseDirectory,
+        `server-version-${process.pid}-${Date.now()}.sqlite`,
+      );
+      const client = configuredClient();
+      const reads: string[] = [];
+      let versionIndex = 0;
+      const server = await createProductionReviewServer(
+        client,
+        { ...productionConfig, replayDatabasePath: databasePath },
+        productionServices({
+          async createPaymentGate() {
+            return {
+              async review() {
+                return {
+                  paid: true,
+                  settlementId: "0.0.8001@1788509000.000000001",
+                  responseHeaders: { "payment-response": "settled" },
+                };
+              },
+            };
+          },
+          async executeNetworkVersionInfoQuery(_client, query) {
+            reads.push(
+              `version:${query.nodeAccountIds?.map((id) => id.toString()).join(",")}`,
+            );
+            const version = versions[versionIndex];
+            versionIndex += 1;
+            if (version === undefined) {
+              throw new Error("unexpected extra network-version read");
+            }
+            return {
+              protobufVersion: version,
+              servicesVersion: version,
+            };
+          },
+          async executeScheduleInfoQuery(_client, query) {
+            reads.push(
+              `schedule:${query.scheduleId?.toString()}:${query.nodeAccountIds
+                ?.map((id) => id.toString())
+                .join(",")}`,
+            );
+            return schedule();
+          },
+        }),
+      );
+
+      try {
+        await new Promise<void>((resolveListen, reject) => {
+          server.once("error", reject);
+          server.listen(0, "127.0.0.1", resolveListen);
+        });
+        const address = server.address() as AddressInfo;
+        const response = await fetch(
+          `http://127.0.0.1:${address.port}/review`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(requestBody()),
+          },
+        );
+        const body = (await response.json()) as Record<string, unknown>;
+
+        assert.equal(response.status, 200);
+        assert.equal(body.outcome, "refused");
+        assert.match(String(body.reason), /network version/);
+        assert.deepEqual(reads, [
+          "version:0.0.3",
+          "schedule:0.0.7001:0.0.3",
+          "version:0.0.3",
+        ]);
+      } finally {
+        await new Promise<void>((resolveClose, reject) => {
+          server.close((error) =>
+            error == null ? resolveClose() : reject(error),
+          );
+        });
+        client.close();
+        rmSync(databasePath, { force: true });
+      }
+    });
   }
 });
 

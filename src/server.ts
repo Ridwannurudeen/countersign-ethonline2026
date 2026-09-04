@@ -1,8 +1,10 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 
 import {
+  AccountId,
   AccountInfoQuery,
   Client,
+  KeyList,
   NetworkVersionInfoQuery,
   PublicKey,
   ScheduleId,
@@ -27,7 +29,11 @@ import {
 } from "./payment-gate.ts";
 import {
   completeMandateReview,
+  getCompletedMandateReview,
+  initializeReplayStore,
+  ReplayStoreContentionError,
   reserveMandateReview,
+  type CompletedMandateReview,
   type MandateReviewReservation,
   type MandateReviewReservationResult,
 } from "./replay-store.ts";
@@ -40,6 +46,7 @@ import {
 import {
   createHederaVerdictTopicTransport,
   openVerdictLog,
+  validateVerdictParticipantIdentifiers,
   type VerdictLog,
   type VerdictRecord,
 } from "./verdict-log.ts";
@@ -57,6 +64,7 @@ interface ParsedReviewRequest {
 export interface ResolvedSchedule {
   info: ReviewableScheduleInfo;
   context: Omit<ReviewContext, "requestedScheduleId">;
+  refusalReason?: string;
 }
 
 type ReviewResponseOutcome =
@@ -67,9 +75,19 @@ type ReviewResponseOutcome =
     }
   | { outcome: "refused"; reason: string };
 
+type ReviewResponseBody = ReviewResponseOutcome & {
+  scheduleId: string;
+  mandateDigest: string;
+  settlementId: string;
+  mirrorNodeUrl: string;
+};
+
 export interface ReviewServerDependencies {
   ownerPublicKey: PublicKey;
   paymentGate: PaymentGate;
+  lookupCompletedReview(
+    reservation: MandateReviewReservation,
+  ): Awaitable<CompletedMandateReview | null>;
   resolveSchedule(scheduleId: string): Promise<ResolvedSchedule>;
   reserveNonce(
     reservation: MandateReviewReservation,
@@ -77,7 +95,7 @@ export interface ReviewServerDependencies {
   submitScheduleApproval(scheduleId: string): Promise<void>;
   completeNonce(
     reservation: MandateReviewReservation,
-    outcome: "approved",
+    completion: CompletedMandateReview,
   ): Awaitable<void>;
   verdictLog: VerdictLog;
   participantIdentifiers: {
@@ -111,20 +129,33 @@ export interface ProductionReviewServerConfig {
 }
 
 export interface ProductionReviewServerServices {
-  loadOperationalAccount(
+  executeAccountInfoQuery(
     client: Client,
-    accountId: string,
+    query: AccountInfoQuery,
   ): Promise<{ accountId: string; key: unknown }>;
+  executeNetworkVersionInfoQuery(
+    client: Client,
+    query: NetworkVersionInfoQuery,
+  ): Promise<{
+    protobufVersion: ReviewContext["networkVersions"]["protobuf"];
+    servicesVersion: ReviewContext["networkVersions"]["services"];
+  }>;
+  executeScheduleInfoQuery(
+    client: Client,
+    query: ScheduleInfoQuery,
+  ): Promise<ReviewableScheduleInfo>;
   createPaymentGate(config: PaymentGateConfig): Promise<PaymentGate>;
   openVerdictLog(client: Client, topicId?: string): Promise<VerdictLog>;
 }
 
 class RequestError extends Error {
   readonly status: number;
+  readonly closeConnection: boolean;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, closeConnection = false) {
     super(message);
     this.status = status;
+    this.closeConnection = closeConnection;
   }
 }
 
@@ -224,26 +255,21 @@ async function readJsonBody(request: IncomingMessage): Promise<unknown> {
     /^\d+$/.test(contentLength) &&
     Number(contentLength) > MAX_REVIEW_BODY_BYTES
   ) {
-    request.resume();
-    throw new RequestError(413, "request body exceeds the size limit");
+    request.pause();
+    throw new RequestError(413, "request body exceeds the size limit", true);
   }
 
   request.setEncoding("utf8");
   const chunks: string[] = [];
   let length = 0;
-  let exceedsLimit = false;
 
   for await (const chunk of request as AsyncIterable<string>) {
     length += Buffer.byteLength(chunk);
     if (length > MAX_REVIEW_BODY_BYTES) {
-      exceedsLimit = true;
-    } else {
-      chunks.push(chunk);
+      request.pause();
+      throw new RequestError(413, "request body exceeds the size limit", true);
     }
-  }
-
-  if (exceedsLimit) {
-    throw new RequestError(413, "request body exceeds the size limit");
+    chunks.push(chunk);
   }
 
   try {
@@ -281,15 +307,13 @@ function writeJson(
   response.end(encoded);
 }
 
-async function recordAndRespond(
-  response: ServerResponse,
+async function recordOutcome(
   dependencies: ReviewServerDependencies,
   request: ParsedReviewRequest,
   digest: string,
   settlementId: string,
   outcomeBody: ReviewResponseOutcome,
-  paymentResponseHeaders: Readonly<Record<string, string>>,
-): Promise<void> {
+): Promise<ReviewResponseBody> {
   const record: VerdictRecord = {
     outcome: outcomeBody.outcome,
     scheduleId: request.scheduleId,
@@ -304,16 +328,34 @@ async function recordAndRespond(
     throw new Error("verdict mirror-node URL is missing");
   }
 
+  return {
+    ...outcomeBody,
+    scheduleId: request.scheduleId,
+    mandateDigest: digest,
+    settlementId,
+    mirrorNodeUrl: receipt.mirrorNodeUrl,
+  };
+}
+
+async function recordAndRespond(
+  response: ServerResponse,
+  dependencies: ReviewServerDependencies,
+  request: ParsedReviewRequest,
+  digest: string,
+  settlementId: string,
+  outcomeBody: ReviewResponseOutcome,
+  paymentResponseHeaders: Readonly<Record<string, string>>,
+): Promise<void> {
   writeJson(
     response,
     200,
-    {
-      ...outcomeBody,
-      scheduleId: request.scheduleId,
-      mandateDigest: digest,
+    await recordOutcome(
+      dependencies,
+      request,
+      digest,
       settlementId,
-      mirrorNodeUrl: receipt.mirrorNodeUrl,
-    },
+      outcomeBody,
+    ),
     paymentResponseHeaders,
   );
 }
@@ -357,8 +399,41 @@ async function handleReviewRequest(
     response.setHeader(name, value);
   }
 
-  const resolved = await dependencies.resolveSchedule(parsedRequest.scheduleId);
   const digest = mandateDigest(parsedRequest.mandateEnvelope.mandate);
+  const reservation: MandateReviewReservation = {
+    tenantId: parsedRequest.tenantId,
+    nonce: parsedRequest.mandateEnvelope.mandate.nonce,
+    mandateDigest: digest,
+    scheduleId: parsedRequest.scheduleId,
+  };
+  const completedReview = await dependencies.lookupCompletedReview(reservation);
+  if (completedReview !== null) {
+    writeJson(
+      response,
+      200,
+      {
+        ...completedReview,
+        scheduleId: parsedRequest.scheduleId,
+        mandateDigest: digest,
+      },
+      payment.responseHeaders,
+    );
+    return;
+  }
+
+  const resolved = await dependencies.resolveSchedule(parsedRequest.scheduleId);
+  if (resolved.refusalReason !== undefined) {
+    await recordAndRespond(
+      response,
+      dependencies,
+      parsedRequest,
+      digest,
+      payment.settlementId,
+      { outcome: "refused", reason: resolved.refusalReason },
+      payment.responseHeaders,
+    );
+    return;
+  }
   const reviewOutcome = reviewSchedule(
     resolved.info,
     parsedRequest.mandateEnvelope.mandate,
@@ -382,12 +457,6 @@ async function handleReviewRequest(
     return;
   }
 
-  const reservation: MandateReviewReservation = {
-    tenantId: parsedRequest.tenantId,
-    nonce: parsedRequest.mandateEnvelope.mandate.nonce,
-    mandateDigest: digest,
-    scheduleId: parsedRequest.scheduleId,
-  };
   const reservationResult = await dependencies.reserveNonce(reservation);
 
   if (reservationResult.status === "refused") {
@@ -419,13 +488,28 @@ async function handleReviewRequest(
     if (reservationResult.outcome !== "approved") {
       throw new Error("stored review outcome is invalid");
     }
+    const concurrentCompletion = await dependencies.lookupCompletedReview(
+      reservation,
+    );
+    if (concurrentCompletion === null) {
+      throw new Error("stored review outcome is incomplete");
+    }
+    writeJson(
+      response,
+      200,
+      {
+        ...concurrentCompletion,
+        scheduleId: parsedRequest.scheduleId,
+        mandateDigest: digest,
+      },
+      payment.responseHeaders,
+    );
+    return;
   } else {
     await dependencies.submitScheduleApproval(parsedRequest.scheduleId);
-    await dependencies.completeNonce(reservation, "approved");
   }
 
-  await recordAndRespond(
-    response,
+  const responseBody = await recordOutcome(
     dependencies,
     parsedRequest,
     digest,
@@ -435,8 +519,15 @@ async function handleReviewRequest(
       recipientAccountId: reviewOutcome.recipientAccountId,
       amountTinybars: reviewOutcome.amountTinybars,
     },
-    payment.responseHeaders,
   );
+  await dependencies.completeNonce(reservation, {
+    outcome: "approved",
+    recipientAccountId: reviewOutcome.recipientAccountId,
+    amountTinybars: reviewOutcome.amountTinybars,
+    settlementId: responseBody.settlementId,
+    mirrorNodeUrl: responseBody.mirrorNodeUrl,
+  });
+  writeJson(response, 200, responseBody, payment.responseHeaders);
 }
 
 export function createReviewServer(dependencies: ReviewServerDependencies) {
@@ -448,7 +539,20 @@ export function createReviewServer(dependencies: ReviewServerDependencies) {
       }
 
       if (error instanceof RequestError) {
+        if (error.closeConnection) {
+          response.setHeader("connection", "close");
+        }
         writeJson(response, error.status, { error: error.message });
+        return;
+      }
+
+      if (error instanceof ReplayStoreContentionError) {
+        writeJson(
+          response,
+          503,
+          { error: error.message },
+          { "retry-after": "1" },
+        );
         return;
       }
 
@@ -464,14 +568,20 @@ export function createReviewServer(dependencies: ReviewServerDependencies) {
 }
 
 const productionReviewServerServices: ProductionReviewServerServices = {
-  async loadOperationalAccount(client, accountId) {
-    const accountInfo = await new AccountInfoQuery()
-      .setAccountId(accountId)
-      .execute(client);
+  async executeAccountInfoQuery(client, query) {
+    const accountInfo = await query.execute(client);
     return {
       accountId: accountInfo.accountId.toString(),
       key: accountInfo.key,
     };
+  },
+
+  executeNetworkVersionInfoQuery(client, query) {
+    return query.execute(client);
+  },
+
+  executeScheduleInfoQuery(client, query) {
+    return query.execute(client);
   },
 
   createPaymentGate,
@@ -480,6 +590,90 @@ const productionReviewServerServices: ProductionReviewServerServices = {
     return openVerdictLog(createHederaVerdictTopicTransport(client), topicId);
   },
 };
+
+function configuredConsensusNode(client: Client): AccountId {
+  const nodes = Object.values(client.network)
+    .map((node) =>
+      typeof node === "string" ? AccountId.fromString(node) : node,
+    )
+    .sort((left, right) => left.toString().localeCompare(right.toString()));
+  const node = nodes[0];
+  if (node === undefined) {
+    throw new Error("client network must contain a consensus node");
+  }
+  return node;
+}
+
+function hasExpectedTreasuryKey(
+  key: unknown,
+  ownerPublicKey: PublicKey,
+  agentPublicKey: PublicKey,
+  guardPublicKey: PublicKey,
+): boolean {
+  if (!(key instanceof KeyList) || key.threshold !== 1) {
+    return false;
+  }
+  const outerKeys = key.toArray();
+  if (outerKeys.length !== 2) {
+    return false;
+  }
+  const ownerBranches = outerKeys.filter(
+    (branch) =>
+      branch instanceof PublicKey && branch.equals(ownerPublicKey),
+  );
+  const innerBranches = outerKeys.filter(
+    (branch): branch is KeyList => branch instanceof KeyList,
+  );
+  if (ownerBranches.length !== 1 || innerBranches.length !== 1) {
+    return false;
+  }
+
+  const innerKey = innerBranches[0];
+  if (innerKey === undefined || innerKey.threshold !== 2) {
+    return false;
+  }
+  const innerKeys = innerKey.toArray();
+  return (
+    innerKeys.length === 2 &&
+    innerKeys.every((branch) => branch instanceof PublicKey) &&
+    innerKeys.some(
+      (branch) =>
+        branch instanceof PublicKey && branch.equals(agentPublicKey),
+    ) &&
+    innerKeys.some(
+      (branch) =>
+        branch instanceof PublicKey && branch.equals(guardPublicKey),
+    )
+  );
+}
+
+function formatNetworkVersion(
+  version: ReviewContext["networkVersions"]["protobuf"],
+): string | null {
+  const components = [version.major, version.minor, version.patch];
+  if (
+    components.some(
+      (component) =>
+        !Number.isSafeInteger(component) || component < 0,
+    )
+  ) {
+    return null;
+  }
+  return components.join(".");
+}
+
+function networkVersionsMatch(
+  versions: {
+    protobufVersion: ReviewContext["networkVersions"]["protobuf"];
+    servicesVersion: ReviewContext["networkVersions"]["services"];
+  },
+  allowed: ReviewContext["allowedNetworkVersions"],
+): boolean {
+  return (
+    formatNetworkVersion(versions.protobufVersion) === allowed.protobuf &&
+    formatNetworkVersion(versions.servicesVersion) === allowed.services
+  );
+}
 
 export async function createProductionReviewServer(
   client: Client,
@@ -490,6 +684,7 @@ export async function createProductionReviewServer(
     agent: generateHcs14Aid(config.participantIdentities.agent),
     guard: generateHcs14Aid(config.participantIdentities.guard),
   };
+  validateVerdictParticipantIdentifiers(participantIdentifiers);
   const operatorPublicKey = client.operatorPublicKey;
   if (
     operatorPublicKey === null ||
@@ -498,10 +693,55 @@ export async function createProductionReviewServer(
     throw new Error("client operator key must equal the configured guard key");
   }
 
-  const operationalAccount = await services.loadOperationalAccount(
-    client,
-    config.payment.operationalAccount.accountId,
-  );
+  if (
+    config.ownerPublicKey.equals(config.agentPublicKey) ||
+    config.ownerPublicKey.equals(config.guardPublicKey) ||
+    config.agentPublicKey.equals(config.guardPublicKey)
+  ) {
+    throw new Error("owner, agent, and guard keys must be pairwise distinct");
+  }
+
+  const operatorAccountId = client.operatorAccountId;
+  if (operatorAccountId === null) {
+    throw new Error("client operator account is required");
+  }
+  if (
+    [
+      config.treasuryAccountId,
+      config.expectedAgentAccountId,
+      operatorAccountId.toString(),
+    ].includes(config.payment.operationalAccount.accountId) ||
+    [config.ownerPublicKey, config.agentPublicKey, config.guardPublicKey].some(
+      (key) => config.payment.operationalAccount.publicKey.equals(key),
+    )
+  ) {
+    throw new Error(
+      "operational payment identity must be separate from authorization identities",
+    );
+  }
+
+  const consensusNode = configuredConsensusNode(client);
+  const [operationalAccount, treasuryAccount, agentAccount] = await Promise.all([
+    services.executeAccountInfoQuery(
+      client,
+      new AccountInfoQuery()
+        .setAccountId(config.payment.operationalAccount.accountId)
+        .setNodeAccountIds([consensusNode]),
+    ),
+    services.executeAccountInfoQuery(
+      client,
+      new AccountInfoQuery()
+        .setAccountId(config.treasuryAccountId)
+        .setNodeAccountIds([consensusNode]),
+    ),
+    services.executeAccountInfoQuery(
+      client,
+      new AccountInfoQuery()
+        .setAccountId(config.expectedAgentAccountId)
+        .setNodeAccountIds([consensusNode]),
+    ),
+  ]);
+
   if (
     operationalAccount.accountId !==
     config.payment.operationalAccount.accountId
@@ -519,16 +759,38 @@ export async function createProductionReviewServer(
       "operational payment account key does not match the configured operational key",
     );
   }
+  if (treasuryAccount.accountId !== config.treasuryAccountId) {
+    throw new Error(
+      "returned treasury account does not match the configured account",
+    );
+  }
   if (
-    operationalAccount.accountId === config.treasuryAccountId ||
-    [config.ownerPublicKey, config.agentPublicKey, config.guardPublicKey].some(
-      (key) => operationalPublicKey.equals(key),
+    !hasExpectedTreasuryKey(
+      treasuryAccount.key,
+      config.ownerPublicKey,
+      config.agentPublicKey,
+      config.guardPublicKey,
     )
   ) {
     throw new Error(
-      "operational payment key must be separate from authorization keys and treasury account",
+      "treasury account must use the configured nested authorization tree",
     );
   }
+  if (agentAccount.accountId !== config.expectedAgentAccountId) {
+    throw new Error(
+      "returned agent account does not match the configured account",
+    );
+  }
+  if (
+    !(agentAccount.key instanceof PublicKey) ||
+    !agentAccount.key.equals(config.agentPublicKey)
+  ) {
+    throw new Error(
+      "agent account key does not match the configured agent key",
+    );
+  }
+
+  initializeReplayStore(config.replayDatabasePath);
 
   const paymentGate = await services.createPaymentGate({
     ...config.payment,
@@ -547,14 +809,42 @@ export async function createProductionReviewServer(
   return createReviewServer({
     ownerPublicKey: config.ownerPublicKey,
     paymentGate,
+    lookupCompletedReview(reservation) {
+      return getCompletedMandateReview(
+        config.replayDatabasePath,
+        reservation,
+      );
+    },
     async resolveSchedule(scheduleId) {
-      const [info, networkVersionInfo] = await Promise.all([
-        new ScheduleInfoQuery().setScheduleId(scheduleId).execute(client),
-        new NetworkVersionInfoQuery().execute(client),
-      ]);
+      const versionBefore = await services.executeNetworkVersionInfoQuery(
+        client,
+        new NetworkVersionInfoQuery().setNodeAccountIds([consensusNode]),
+      );
+      const info = await services.executeScheduleInfoQuery(
+        client,
+        new ScheduleInfoQuery()
+          .setScheduleId(scheduleId)
+          .setNodeAccountIds([consensusNode]),
+      );
+      const versionAfter = await services.executeNetworkVersionInfoQuery(
+        client,
+        new NetworkVersionInfoQuery().setNodeAccountIds([consensusNode]),
+      );
+
+      let refusalReason: string | undefined;
+      if (!networkVersionsMatch(versionBefore, config.allowedNetworkVersions)) {
+        refusalReason =
+          "network version before schedule resolution is outside the audited allowlist";
+      } else if (
+        !networkVersionsMatch(versionAfter, config.allowedNetworkVersions)
+      ) {
+        refusalReason =
+          "network version after schedule resolution is outside the audited allowlist";
+      }
 
       return {
         info,
+        refusalReason,
         context: {
           expectedAgentAccountId: config.expectedAgentAccountId,
           treasuryAccountId: config.treasuryAccountId,
@@ -563,8 +853,8 @@ export async function createProductionReviewServer(
           protocolMaxFeeTinybars: config.protocolMaxFeeTinybars,
           nowEpochSeconds: Math.floor(Date.now() / 1_000).toString(),
           networkVersions: {
-            protobuf: networkVersionInfo.protobufVersion,
-            services: networkVersionInfo.servicesVersion,
+            protobuf: versionBefore.protobufVersion,
+            services: versionBefore.servicesVersion,
           },
           allowedNetworkVersions: config.allowedNetworkVersions,
         },
@@ -579,8 +869,12 @@ export async function createProductionReviewServer(
         .execute(client);
       await transactionResponse.getReceipt(client);
     },
-    completeNonce(reservation, outcome) {
-      completeMandateReview(config.replayDatabasePath, reservation, outcome);
+    completeNonce(reservation, completion) {
+      completeMandateReview(
+        config.replayDatabasePath,
+        reservation,
+        completion,
+      );
     },
     verdictLog,
     participantIdentifiers,

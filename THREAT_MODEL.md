@@ -11,8 +11,9 @@ Trusted inputs and authorities:
 - The owner's Ed25519 key is trusted to authorize the mandate. The mandate is not
   trusted until its exact schema has been parsed and its signature has been verified
   over the domain-separated canonical bytes.
-- The guard's own key and its custody are trusted. The guard uses that key only after
-  the review outcome is approved.
+- The guard's own key and its custody are trusted. The guard account pays for consensus
+  queries and signs HCS verdict submissions. A refusal never submits
+  `ScheduleSignTransaction` and never adds the guard key to the schedule.
 - Consensus-resolved `ScheduleInfo` and network-version results obtained by the
   guard's own Hedera queries are trusted as the source of schedule state. A caller's
   representation of either result is not equivalent.
@@ -39,9 +40,10 @@ Inputs that are never trusted on their own:
 | Crypto transfer | **INVARIANT:** The transaction contains one HBAR transfer list, no token transfer lists, and no additional decoded fields in either the crypto-transfer body or HBAR transfer list. | The crypto-transfer field allowlist permits only `transfers` and `tokenTransfers`; `tokenTransfers` must be empty. The HBAR list must exist, and its field allowlist permits only `accountAmounts`. | `reviewSchedule refuses a missing HBAR transfer list`<br>`reviewSchedule refuses token transfers`<br>`reviewSchedule refuses additional crypto-transfer fields`<br>`reviewSchedule refuses additional transfer-list fields` |
 | Balance adjustments | **INVARIANT:** The HBAR transfer has exactly two adjustments: one negative debit from the configured treasury and one positive credit to an allowlisted recipient. The amounts are equal and opposite, and the credit does not exceed the mandate cap. | The validator requires two parsed adjustments, locates the treasury by configured account ID, treats the other entry as the sole recipient, checks signs and zero-sum equality, and applies the mandate allowlist and cap. | `reviewSchedule refuses an extra balance adjustment`<br>`reviewSchedule refuses fewer than two balance adjustments`<br>`reviewSchedule refuses a treasury adjustment that is not the debit`<br>`reviewSchedule refuses a recipient outside the allowlist`<br>`reviewSchedule refuses an amount above the mandate cap`<br>`reviewSchedule refuses a non-positive amount`<br>`reviewSchedule refuses unequal balance adjustments` |
 | Per-adjustment flags | **INVARIANT:** Every adjustment contains only audited fields, uses a numeric account ID without an alias or additional decoded fields, has a valid integer amount, sets `isApproval` to `false`, and omits both allowance-hook fields. | Per-object field allowlists reject additional decoded adjustment and account-ID fields. `numericAccountId` requires non-negative shard, realm, and account numbers and rejects aliases. The amount parser requires an integer representation; explicit checks require `isApproval === false` and absent hooks. | `reviewSchedule refuses isApproval on adjustment 1`<br>`reviewSchedule refuses isApproval on adjustment 2`<br>`reviewSchedule refuses preTxAllowanceHook`<br>`reviewSchedule refuses prePostTxAllowanceHook`<br>`reviewSchedule refuses alias account identifiers`<br>`reviewSchedule refuses additional account-identifier fields`<br>`reviewSchedule refuses additional balance-adjustment fields` |
-| Network schema version gate | **INVARIANT:** Review proceeds only when both the network protobuf and services `major.minor.patch` triples exactly equal the guard's reviewed allowlist. Any mismatch fails closed before schedule validation. | `formatVersion` accepts only non-negative safe-integer components. `reviewSchedule` compares the formatted protobuf and services versions with their independently configured allowed strings before reading the schedule envelope. | `reviewSchedule refuses a protobuf network-version change`<br>`reviewSchedule refuses a services network-version change` |
-| Paid review boundary | **INVARIANT:** Malformed requests and invalid mandates never reach payment; unpaid requests never reach consensus; paid review uses an operational key outside the treasury authorization tree. | The server parses an exact request schema and verifies the owner signature before x402. The x402 gate settles up front, and production startup resolves the operational account from consensus and verifies its single key is distinct. | `POST /review rejects unknown top-level fields before payment`<br>`POST /review rejects an invalid mandate signature before payment`<br>`POST /review returns the payment challenge without resolving consensus`<br>`production server verifies the operational payment account key from consensus` |
-| Replay ownership | **INVARIANT:** Exactly the request that atomically reserves a new mandate tuple may submit schedule approval. | A new reservation returns `reserved`. Identical pending retries and conflicting/high-water-mark nonces are refused without submission. | `POST /review refuses a pending retry without submitting approval`<br>`POST /review records a replay refusal without submitting approval` |
+| Network schema version gate | **INVARIANT:** Review proceeds only when both the network protobuf and services `major.minor.patch` triples exactly equal the guard's reviewed allowlist immediately before and after the schedule read. | Production selects one consensus node, pins both version queries and the intervening `ScheduleInfoQuery` to that node with `setNodeAccountIds`, and performs the three reads sequentially. `formatVersion` accepts only non-negative safe-integer components, and any before/after mismatch is refused. | `reviewSchedule refuses a protobuf network-version change`<br>`reviewSchedule refuses a services network-version change`<br>`production schedule resolution pins both version reads and the schedule read to one node` |
+| Treasury topology | **INVARIANT:** Production starts only when the configured treasury has exactly `1-of[owner, 2-of[agent, guard]]`, the configured agent account has the agent key, and all three authorization keys are distinct. | Startup resolves the treasury and agent accounts from consensus, validates the exact nested thresholds and memberships, binds the agent account ID to its single key, and checks pairwise key inequality. | `production server requires pairwise-distinct authorization keys`<br>`production server requires the exact nested treasury authorization tree`<br>`production server binds the configured agent account to the agent key` |
+| Paid review boundary | **INVARIANT:** Malformed requests and invalid mandates never reach payment; unpaid requests never reach consensus; configured payment identities do not intersect the treasury, expected agent, guard operator, or their authorization keys. | The server parses an exact request schema and verifies the owner signature before x402. The x402 gate settles up front. Production startup resolves the payment destination account from consensus and verifies its single key and account ID are separate. The narrated client signs its payment with a separately keyed payer. | `POST /review rejects unknown top-level fields before payment`<br>`POST /review rejects an invalid mandate signature before payment`<br>`POST /review returns the payment challenge without resolving consensus`<br>`production server verifies the operational payment account key from consensus`<br>`invariant: the decoded payment payload contains no treasury authorization identity` |
+| Replay ownership | **INVARIANT:** Exactly the request that atomically reserves a new mandate tuple may submit schedule approval. | A file-backed SQLite database uses `BEGIN IMMEDIATE`, a primary key, and a bounded busy timeout. A new reservation returns `reserved`; contention returns retryable HTTP 503; identical completed tuples replay their stored approved response before pending-only schedule validation. | `concurrent workers reserve one tuple exactly once`<br>`write contention waits for a bounded interval and returns a retryable error`<br>`POST /review returns a retryable response for replay-store contention`<br>`POST /review replays a completed approval before pending schedule validation` |
 | Verdict evidence | **INVARIANT:** Every completed authorization review publishes an approved/refused record to the configured HCS topic before the service returns a successful response. | HCS records bind the review outcome, ScheduleID, mandate digest, settlement ID, tenant, and both HCS-14 participant identifiers. Configured topics must be immutable, submit-key protected, and fee-free. | `VerdictLog records an approved review and returns its mirror-node URL`<br>`VerdictLog records a refused review as evidence`<br>`validateVerdictTopicInfo refuses a topic with an admin key` |
 
 ## Residual limitations
@@ -58,7 +60,9 @@ Inputs that are never trusted on their own:
   can compare only that triple.
 - The installed `@hiero-ledger/proto` 2.31.0 decoder skips fields it does not know, so
   such fields cannot be recovered from the decoded body. This is why both network
-  version triples are gated and any triple mismatch fails closed.
+  version triples are checked on one node before and after the schedule read and any
+  triple mismatch fails closed. This is node-local provenance; it does not prove that
+  every node in the network is running the same software.
 - The validator supports HBAR only. Token transfers are refused and token custom fees,
   which can introduce additional value movements, are outside the validated model.
 - The outer `1-of` treasury key has a direct owner branch. The owner key alone can
@@ -68,6 +72,27 @@ Inputs that are never trusted on their own:
   exit after schedule approval but before HCS submission can leave an approved schedule
   without its verdict record. The handler returns no successful review response when
   HCS publication fails, but durable outbox reconciliation is not implemented.
+- The x402 fee is a non-refundable review attempt. Settlement occurs before consensus
+  resolution, replay-store access, schedule approval, completion persistence, and HCS
+  publication. Failure in any later step can therefore return an error after the fee
+  has settled; refund and retry-credit handling are not implemented.
+- A process exit after nonce reservation can leave the exact tuple permanently pending.
+  There is no automatic lease expiry. Recovery requires stopping the guard, reconciling
+  the ScheduleID and HCS topic against consensus, and backing up the replay database. If
+  neither a guard approval nor a verdict exists, the operator deletes only that exact
+  pending row before restarting. If approval or a verdict exists, the operator must first
+  publish any missing verdict and populate that row's completed response fields from the
+  verified consensus records. No automated recovery command or durable outbox exists.
+- An identical completed retry is recognized before pending-only schedule validation
+  and returns the stored approved outcome, original settlement ID, and original verdict
+  link without publishing refusal evidence. Because x402 settlement precedes this
+  lookup, the retry itself is another non-refundable review attempt.
+- Production verifies the treasury topology and agent-account binding at startup, not
+  before every review. A key change after startup is not detected until the service is
+  restarted.
+- SQLite contention waits up to 100 milliseconds and then returns retryable HTTP 503.
+  This bounds lock waiting but does not provide high availability across a database or
+  filesystem outage.
 - The required `@hiero-ledger/sdk@2.85.0` alignment currently resolves transitive
   packages in published high-severity advisory ranges. This build must not be deployed
   until a compatible dependency set or verified override resolves those advisories.

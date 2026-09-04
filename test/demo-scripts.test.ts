@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import test from "node:test";
 
@@ -36,4 +37,91 @@ test("demo entrypoints fail fast when Hedera credentials are missing", async (t)
       assert.doesNotMatch(result.stderr, /HAPI protobuf version/);
     });
   }
+});
+
+test("live flow keeps treasury authorization keys out of the x402 payment payload", () => {
+  const source = readFileSync(resolve("scripts", "live-flow.ts"), "utf8");
+
+  assert.match(
+    source,
+    /createClientHederaSigner\(\s*paymentPayerAccountId\.toString\(\),\s*paymentPayerPrivateKey,/,
+  );
+  assert.doesNotMatch(
+    source,
+    /createClientHederaSigner\(\s*agentAccountId\.toString\(\),\s*agentPrivateKey,/,
+  );
+  assert.match(
+    source,
+    /operationalAccount: \{\s*accountId: operatorAccountId\.toString\(\),\s*publicKey: operatorPrivateKey\.publicKey,/,
+  );
+  assert.match(
+    source,
+    /requirePaymentQuote\(\s*paymentRequired,\s*operatorAccountId\.toString\(\),/,
+  );
+});
+
+test("live flow recovers every created account from finally", () => {
+  const source = readFileSync(resolve("scripts", "live-flow.ts"), "utf8");
+  const cleanup = source.slice(source.lastIndexOf("} finally {"));
+
+  for (const accountId of [
+    "treasuryAccountId",
+    "agentAccountId",
+    "guardAccountId",
+    "paymentPayerAccountId",
+  ]) {
+    assert.match(
+      source,
+      new RegExp(
+        `temporaryAccounts\\.push\\(\\{\\s*accountId: ${accountId},`,
+      ),
+    );
+  }
+  assert.match(cleanup, /for \(const account of temporaryAccounts\)/);
+  assert.match(
+    cleanup,
+    /recoverTemporaryBalance\([\s\S]*?account\.accountId,[\s\S]*?account\.privateKey/,
+  );
+  assert.match(
+    source,
+    /catch \(error\) \{\s*primaryFailure = \{ error \};\s*\} finally/,
+  );
+  assert.match(
+    source,
+    /if \(primaryFailure !== null\) \{\s*throw primaryFailure\.error;/,
+  );
+});
+
+test("nested-key spike recovers every created account from finally", () => {
+  const source = readFileSync(
+    resolve("scripts", "spike-nested-key.ts"),
+    "utf8",
+  );
+  const cleanup = source.slice(source.lastIndexOf("} finally {"));
+
+  for (const accountId of [
+    "treasuryAccountId",
+    "agentAccountId",
+    "guardAccountId",
+  ]) {
+    assert.match(
+      source,
+      new RegExp(
+        `temporaryAccounts\\.push\\(\\{\\s*accountId: ${accountId},`,
+      ),
+    );
+  }
+  assert.match(cleanup, /for \(const account of temporaryAccounts\)/);
+  assert.match(
+    cleanup,
+    /recoverTemporaryBalance\([\s\S]*?account\.accountId,[\s\S]*?account\.privateKey/,
+  );
+  assert.match(
+    source,
+    /catch \(error\) \{\s*primaryFailure = \{ error \};\s*\} finally/,
+  );
+  assert.match(
+    source,
+    /if \(primaryFailure !== null\) \{\s*throw primaryFailure\.error;/,
+  );
 });

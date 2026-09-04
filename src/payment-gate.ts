@@ -1,4 +1,5 @@
-import { PublicKey } from "@hiero-ledger/sdk";
+import { PublicKey, Transaction } from "@hiero-ledger/sdk";
+import { decodePaymentSignatureHeader } from "@x402/core/http";
 import {
   HTTPFacilitatorClient,
   x402HTTPResourceServer,
@@ -6,6 +7,12 @@ import {
   type HTTPAdapter,
   type FacilitatorClient,
 } from "@x402/core/server";
+import {
+  extractTransactionFromPayload,
+  hederaAccountIdsEqual,
+  inspectHederaTransaction,
+  type ExactHederaPayloadV2,
+} from "@x402/hedera";
 import { ExactHederaScheme } from "@x402/hedera/exact/server";
 
 const FACILITATOR_URL = "https://api.testnet.blocky402.com";
@@ -128,6 +135,59 @@ function requestAdapter(
   };
 }
 
+function usesTreasuryAuthorizationIdentity(
+  paymentSignatureHeader: string,
+  authorization: TreasuryAuthorization,
+): boolean {
+  let transactionBase64: string;
+  try {
+    const paymentPayload = decodePaymentSignatureHeader(paymentSignatureHeader);
+    const transaction = paymentPayload.payload.transaction;
+    if (typeof transaction !== "string") {
+      return false;
+    }
+    const payload: ExactHederaPayloadV2 = { transaction };
+    transactionBase64 = extractTransactionFromPayload(payload);
+  } catch {
+    // The x402 server below owns malformed-header responses.
+    return false;
+  }
+
+  try {
+    const inspected = inspectHederaTransaction(transactionBase64);
+    if (
+      hederaAccountIdsEqual(
+        inspected.transactionIdAccountId,
+        authorization.accountId,
+      ) ||
+      inspected.hbarTransfers.some(
+        (transfer) =>
+          BigInt(transfer.amount) < 0n &&
+          hederaAccountIdsEqual(transfer.accountId, authorization.accountId),
+      )
+    ) {
+      return true;
+    }
+
+    const authorizationKeys = [
+      authorization.ownerPublicKey,
+      authorization.agentPublicKey,
+      authorization.guardPublicKey,
+    ];
+    return Transaction.fromBytes(Buffer.from(transactionBase64, "base64"))
+      .getSignatures()
+      .getFlatSignatureList()
+      .some((signatures) =>
+        [...signatures.keys()].some((signer) =>
+          authorizationKeys.some((key) => signer.equals(key)),
+        ),
+      );
+  } catch {
+    // The x402 facilitator below owns malformed-transaction validation.
+    return false;
+  }
+}
+
 export async function createPaymentGate(
   config: PaymentGateConfig,
   facilitatorClient: FacilitatorClient = new HTTPFacilitatorClient({
@@ -164,11 +224,19 @@ export async function createPaymentGate(
     async review(
       paymentSignatureHeader?: string,
     ): Promise<PaymentGateOutcome> {
+      const acceptedPaymentHeader =
+        paymentSignatureHeader !== undefined &&
+        usesTreasuryAuthorizationIdentity(
+          paymentSignatureHeader,
+          config.treasuryAuthorization,
+        )
+          ? undefined
+          : paymentSignatureHeader;
       const result = await httpServer.processHTTPRequest({
-        adapter: requestAdapter(config.resourceUrl, paymentSignatureHeader),
+        adapter: requestAdapter(config.resourceUrl, acceptedPaymentHeader),
         path: "/review",
         method: "POST",
-        paymentHeader: paymentSignatureHeader,
+        paymentHeader: acceptedPaymentHeader,
       });
 
       if (result.type === "payment-error") {

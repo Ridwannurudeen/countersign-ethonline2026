@@ -7,6 +7,8 @@ import {
   TopicMessageSubmitTransaction,
 } from "@hiero-ledger/sdk";
 
+import { validateHcs14Identifier } from "./hcs14.ts";
+
 export interface VerdictRecord {
   readonly outcome: "approved" | "refused";
   readonly scheduleId: string;
@@ -50,7 +52,12 @@ const sequenceNumberPattern = /^[1-9][0-9]*$/;
 const scheduleIdPattern = topicIdPattern;
 const mandateDigestPattern = /^[0-9a-f]{64}$/;
 const tenantIdPattern = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
-const participantIdentifierPattern = /^uaid:(aid|did):[^\s]+$/;
+const maxHederaIdComponent = "9223372036854775807";
+const maxHederaEntityId = [
+  maxHederaIdComponent,
+  maxHederaIdComponent,
+  maxHederaIdComponent,
+].join(".");
 
 function requireTopicId(value: string): string {
   if (!topicIdPattern.test(value)) {
@@ -78,12 +85,8 @@ function validateVerdictRecord(record: VerdictRecord): void {
   if (!tenantIdPattern.test(record.tenantId)) {
     throw new Error("tenantId must match [A-Za-z0-9][A-Za-z0-9_-]{0,63}");
   }
-  if (!participantIdentifierPattern.test(record.agentIdentifier)) {
-    throw new Error("agentIdentifier must be an HCS-14 identifier");
-  }
-  if (!participantIdentifierPattern.test(record.guardIdentifier)) {
-    throw new Error("guardIdentifier must be an HCS-14 identifier");
-  }
+  validateHcs14Identifier(record.agentIdentifier, "agentIdentifier");
+  validateHcs14Identifier(record.guardIdentifier, "guardIdentifier");
 }
 
 function verdictMessage(record: VerdictRecord): string {
@@ -105,6 +108,21 @@ function verdictMessage(record: VerdictRecord): string {
   }
 
   return message;
+}
+
+export function validateVerdictParticipantIdentifiers(identifiers: {
+  readonly agent: string;
+  readonly guard: string;
+}): void {
+  verdictMessage({
+    outcome: "approved",
+    scheduleId: maxHederaEntityId,
+    mandateDigest: "f".repeat(64),
+    settlementId: `${maxHederaEntityId}@${maxHederaIdComponent}.999999999?scheduled/${maxHederaIdComponent}`,
+    tenantId: "A".repeat(64),
+    agentIdentifier: identifiers.agent,
+    guardIdentifier: identifiers.guard,
+  });
 }
 
 export function validateVerdictTopicInfo(

@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, verify } from "node:crypto";
 
 import type { PublicKey } from "@hiero-ledger/sdk";
 import { canonicalize } from "json-canonicalize";
@@ -203,7 +203,16 @@ export function verifyMandateSignature(
   }
 
   const signature = parseSignature(envelope.signature).bytes;
-  return ownerPublicKey.verify(canonicalMandateBytes(envelope.mandate), signature);
+  return verify(
+    null,
+    canonicalMandateBytes(envelope.mandate),
+    {
+      key: Buffer.from(ownerPublicKey.toBytesDer()),
+      format: "der",
+      type: "spki",
+    },
+    signature,
+  );
 }
 
 export function mandateDigest(mandate: Mandate): string {

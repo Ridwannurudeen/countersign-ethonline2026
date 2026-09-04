@@ -59,6 +59,29 @@ test("verifyMandateSignature refuses a signature from a different key", () => {
   );
 });
 
+test("verifyMandateSignature refuses a non-canonical Ed25519 signature scalar", () => {
+  const { ownerKey, input } = signedEnvelope(mandate);
+  const signature = Buffer.from(input.signature, "base64url");
+  const ed25519GroupOrder =
+    (1n << 252n) + 27742317777372353535851937790883648493n;
+  let scalar = 0n;
+  for (let index = 0; index < 32; index += 1) {
+    scalar |= BigInt(signature[32 + index] ?? 0) << BigInt(index * 8);
+  }
+
+  let nonCanonicalScalar = scalar + ed25519GroupOrder;
+  for (let index = 0; index < 32; index += 1) {
+    signature[32 + index] = Number(nonCanonicalScalar & 0xffn);
+    nonCanonicalScalar >>= 8n;
+  }
+  const envelope = parseMandateEnvelope({
+    ...input,
+    signature: signature.toString("base64url"),
+  });
+
+  assert.equal(verifyMandateSignature(envelope, ownerKey.publicKey), false);
+});
+
 test("parseMandateEnvelope rejects unknown envelope fields", () => {
   const { input } = signedEnvelope(mandate);
 

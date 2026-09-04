@@ -6,6 +6,7 @@ import { Client, PrivateKey } from "@hiero-ledger/sdk";
 import {
   createHederaVerdictTopicTransport,
   openVerdictLog,
+  validateVerdictParticipantIdentifiers,
   validateVerdictTopicInfo,
   type VerdictRecord,
   type VerdictTopicInfo,
@@ -175,6 +176,56 @@ test("VerdictLog records a refused review as evidence", async () => {
   };
   assert.equal(message.outcome, "refused");
   assert.deepEqual(fixture.calls, ["lookup:0.0.8002", "submit:0.0.8002"]);
+});
+
+test("VerdictLog refuses participant identifiers containing whitespace", async () => {
+  const fixture = transport();
+  const log = await openVerdictLog(fixture.value, "0.0.8002");
+
+  await assert.rejects(
+    () =>
+      log.record({
+        ...approvedRecord,
+        agentIdentifier: "uaid:aid:agent identifier",
+      }),
+    /agentIdentifier must be an HCS-14 identifier without whitespace/,
+  );
+});
+
+test("VerdictLog refuses an oversized participant identifier", async () => {
+  const fixture = transport();
+  const log = await openVerdictLog(fixture.value, "0.0.8002");
+
+  await assert.rejects(
+    () =>
+      log.record({
+        ...approvedRecord,
+        guardIdentifier: `uaid:aid:${"a".repeat(1_024)}`,
+      }),
+    /guardIdentifier must fit in one HCS message chunk/,
+  );
+});
+
+test("startup validation refuses participant identifiers that exceed the verdict budget together", () => {
+  const identifier = `uaid:aid:${"a".repeat(300)}`;
+
+  assert.throws(
+    () =>
+      validateVerdictParticipantIdentifiers({
+        agent: identifier,
+        guard: identifier,
+      }),
+    /verdict record must fit in one HCS message chunk/,
+  );
+});
+
+test("startup validation accepts participant identifiers that leave verdict capacity", () => {
+  assert.doesNotThrow(() =>
+    validateVerdictParticipantIdentifiers({
+      agent: approvedRecord.agentIdentifier,
+      guard: approvedRecord.guardIdentifier,
+    }),
+  );
 });
 
 test("createHederaVerdictTopicTransport rejects a client without an operator key", () => {

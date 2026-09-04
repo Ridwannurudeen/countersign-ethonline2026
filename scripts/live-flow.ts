@@ -52,7 +52,7 @@ const REVIEW_PRICE_TINYBARS = "1000000";
 const TREASURY_INITIAL_BALANCE_TINYBARS = "2000000000";
 const AGENT_INITIAL_BALANCE_TINYBARS = "500000000";
 const GUARD_INITIAL_BALANCE_TINYBARS = "500000000";
-const OPERATIONAL_INITIAL_BALANCE_TINYBARS = "100000000";
+const PAYMENT_PAYER_INITIAL_BALANCE_TINYBARS = "100000000";
 const MANDATE_CAP_TINYBARS = "50000000";
 const TRANSFER_TINYBARS = "25000000";
 const MIRROR_ATTEMPTS = 20;
@@ -65,6 +65,12 @@ interface DemoEnvironment {
   readonly operatorPrivateKey: string;
   readonly allowedProtobufVersion: string;
   readonly allowedServicesVersion: string;
+}
+
+interface TemporaryAccount {
+  readonly accountId: AccountId;
+  readonly privateKey: PrivateKey;
+  readonly label: string;
 }
 
 interface ReviewResponseBase {
@@ -248,6 +254,17 @@ async function recoverTemporaryBalance(
   console.log(`  Account evidence: ${accountMirrorNodeUrl(sourceAccountId)}`);
 }
 
+function recordCleanupFailure(
+  failures: Error[],
+  label: string,
+  error: unknown,
+): void {
+  const message = error instanceof Error ? error.message : String(error);
+  const failure = new Error(`${label}: ${message}`, { cause: error });
+  failures.push(failure);
+  console.error(`Cleanup failure: ${failure.message}`);
+}
+
 async function createHbarSchedule(
   client: Client,
   treasuryAccountId: AccountId,
@@ -425,6 +442,9 @@ export async function runLiveFlow(outcome: LiveFlowOutcome): Promise<void> {
   let agentClient: Client | null = null;
   let guardClient: Client | null = null;
   let server: Server | null = null;
+  const temporaryAccounts: TemporaryAccount[] = [];
+  const cleanupFailures: Error[] = [];
+  let primaryFailure: { readonly error: unknown } | null = null;
 
   try {
     const title =
@@ -453,7 +473,7 @@ export async function runLiveFlow(outcome: LiveFlowOutcome): Promise<void> {
     const ownerPrivateKey = PrivateKey.generateED25519();
     const agentPrivateKey = PrivateKey.generateED25519();
     const guardPrivateKey = PrivateKey.generateED25519();
-    const operationalPrivateKey = PrivateKey.generateED25519();
+    const paymentPayerPrivateKey = PrivateKey.generateED25519();
     const treasuryKey = new KeyList(
       [
         ownerPrivateKey.publicKey,
@@ -471,24 +491,44 @@ export async function runLiveFlow(outcome: LiveFlowOutcome): Promise<void> {
       TREASURY_INITIAL_BALANCE_TINYBARS,
       "Treasury account",
     );
+    temporaryAccounts.push({
+      accountId: treasuryAccountId,
+      privateKey: ownerPrivateKey,
+      label: "Treasury account",
+    });
     const agentAccountId = await createAccount(
       operatorClient,
       agentPrivateKey.publicKey,
       AGENT_INITIAL_BALANCE_TINYBARS,
       "Agent account",
     );
+    temporaryAccounts.push({
+      accountId: agentAccountId,
+      privateKey: agentPrivateKey,
+      label: "Agent account",
+    });
     const guardAccountId = await createAccount(
       operatorClient,
       guardPrivateKey.publicKey,
       GUARD_INITIAL_BALANCE_TINYBARS,
       "Guard account",
     );
-    const operationalAccountId = await createAccount(
+    temporaryAccounts.push({
+      accountId: guardAccountId,
+      privateKey: guardPrivateKey,
+      label: "Guard account",
+    });
+    const paymentPayerAccountId = await createAccount(
       operatorClient,
-      operationalPrivateKey.publicKey,
-      OPERATIONAL_INITIAL_BALANCE_TINYBARS,
-      "x402 payment account",
+      paymentPayerPrivateKey.publicKey,
+      PAYMENT_PAYER_INITIAL_BALANCE_TINYBARS,
+      "x402 payer account",
     );
+    temporaryAccounts.push({
+      accountId: paymentPayerAccountId,
+      privateKey: paymentPayerPrivateKey,
+      label: "x402 payer account",
+    });
     agentClient = Client.forTestnet().setOperator(
       agentAccountId,
       agentPrivateKey,
@@ -514,7 +554,7 @@ export async function runLiveFlow(outcome: LiveFlowOutcome): Promise<void> {
     console.log(JSON.stringify({ ...envelope, mandateDigest: digest }, null, 2));
 
     const recipientAccountId =
-      outcome === "approved" ? operatorAccountId : operationalAccountId;
+      outcome === "approved" ? operatorAccountId : paymentPayerAccountId;
     const treasuryBefore = await queryTinybarBalance(
       operatorClient,
       treasuryAccountId,
@@ -563,8 +603,8 @@ export async function runLiveFlow(outcome: LiveFlowOutcome): Promise<void> {
         resourceUrl: GUARD_URL,
         priceTinybars: REVIEW_PRICE_TINYBARS,
         operationalAccount: {
-          accountId: operationalAccountId.toString(),
-          publicKey: operationalPrivateKey.publicKey,
+          accountId: operatorAccountId.toString(),
+          publicKey: operatorPrivateKey.publicKey,
         },
       },
       participantIdentities: {
@@ -626,9 +666,13 @@ export async function runLiveFlow(outcome: LiveFlowOutcome): Promise<void> {
       .register(
         HEDERA_TESTNET,
         new ExactHederaScheme(
-          createClientHederaSigner(agentAccountId.toString(), agentPrivateKey, {
-            network: HEDERA_TESTNET,
-          }),
+          createClientHederaSigner(
+            paymentPayerAccountId.toString(),
+            paymentPayerPrivateKey,
+            {
+              network: HEDERA_TESTNET,
+            },
+          ),
         ),
       )
       .setSpendControls({
@@ -647,7 +691,7 @@ export async function runLiveFlow(outcome: LiveFlowOutcome): Promise<void> {
     );
     const quote = requirePaymentQuote(
       paymentRequired,
-      operationalAccountId.toString(),
+      operatorAccountId.toString(),
     );
     console.log("  HTTP 402 Payment Required");
     console.log(`  Quote: ${quote.amount} tinybars`);
@@ -747,51 +791,69 @@ export async function runLiveFlow(outcome: LiveFlowOutcome): Promise<void> {
       console.log(`  Verdict evidence: ${reviewResponse.mirrorNodeUrl}`);
     }
 
-    console.log("\nCleanup: return temporary account balances to the operator");
-    await recoverTemporaryBalance(
-      operatorClient,
-      operatorAccountId,
-      treasuryAccountId,
-      ownerPrivateKey,
-      "Treasury account",
-    );
-    await recoverTemporaryBalance(
-      operatorClient,
-      operatorAccountId,
-      agentAccountId,
-      agentPrivateKey,
-      "Agent account",
-    );
-    await recoverTemporaryBalance(
-      operatorClient,
-      operatorAccountId,
-      guardAccountId,
-      guardPrivateKey,
-      "Guard account",
-    );
-    await recoverTemporaryBalance(
-      operatorClient,
-      operatorAccountId,
-      operationalAccountId,
-      operationalPrivateKey,
-      "x402 payment account",
-    );
-
-    if (outcome === "approved") {
-      console.log(
-        "\nAllowed transfer executed with the exact mandated balance delta; temporary balances were recovered afterward.",
-      );
-    } else {
-      console.log(
-        "\nGuard refused the out-of-policy recipient: no guard signature, the transfer never executed, and the treasury balance stayed unchanged during review. Temporary balances were recovered afterward.",
-      );
-    }
+  } catch (error) {
+    primaryFailure = { error };
   } finally {
     if (server?.listening) {
-      await close(server);
+      try {
+        await close(server);
+      } catch (error) {
+        recordCleanupFailure(cleanupFailures, "guard server close failed", error);
+      }
     }
-    guardClient?.close();
-    agentClient?.close();
-    operatorClient.close();
+    if (temporaryAccounts.length > 0) {
+      console.log("\nCleanup: return temporary account balances to the operator");
+    }
+    for (const account of temporaryAccounts) {
+      try {
+        await recoverTemporaryBalance(
+          operatorClient,
+          operatorAccountId,
+          account.accountId,
+          account.privateKey,
+          account.label,
+        );
+      } catch (error) {
+        recordCleanupFailure(
+          cleanupFailures,
+          `${account.label} balance recovery failed`,
+          error,
+        );
+      }
+    }
+    try {
+      guardClient?.close();
+    } catch (error) {
+      recordCleanupFailure(cleanupFailures, "guard client close failed", error);
+    }
+    try {
+      agentClient?.close();
+    } catch (error) {
+      recordCleanupFailure(cleanupFailures, "agent client close failed", error);
+    }
+    try {
+      operatorClient.close();
+    } catch (error) {
+      recordCleanupFailure(cleanupFailures, "operator client close failed", error);
+    }
+  }
+
+  if (primaryFailure !== null) {
+    throw primaryFailure.error;
+  }
+  if (cleanupFailures.length > 0) {
+    throw new AggregateError(
+      cleanupFailures,
+      "one or more temporary account cleanup operations failed",
+    );
+  }
+  if (outcome === "approved") {
+    console.log(
+      "\nAllowed transfer executed with the exact mandated balance delta; temporary balances were recovered afterward.",
+    );
+  } else {
+    console.log(
+      "\nGuard refused the out-of-policy recipient: no guard signature, the transfer never executed, and the treasury balance stayed unchanged during review. Temporary balances were recovered afterward.",
+    );
   }
 }

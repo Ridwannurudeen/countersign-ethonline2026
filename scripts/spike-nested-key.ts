@@ -1,6 +1,3 @@
-import { mkdirSync } from "node:fs";
-import { resolve } from "node:path";
-
 import {
   AccountBalanceQuery,
   AccountCreateTransaction,
@@ -29,11 +26,6 @@ import {
   verifyMandateSignature,
   type Mandate,
 } from "../src/mandate.ts";
-import {
-  completeMandateReview,
-  reserveMandateReview,
-  type MandateReviewReservation,
-} from "../src/replay-store.ts";
 import { reviewSchedule, type ReviewContext } from "../src/review-schedule.ts";
 
 const PROTOCOL_MAX_FEE_TINYBARS = "100000000";
@@ -44,6 +36,12 @@ const MANDATE_CAP_TINYBARS = "50000000";
 const APPROVED_TRANSFER_TINYBARS = "25000000";
 const MIRROR_SCHEDULE_BASE_URL =
   "https://testnet.mirrornode.hedera.com/api/v1/schedules";
+
+interface TemporaryAccount {
+  readonly accountId: AccountId;
+  readonly privateKey: PrivateKey;
+  readonly label: string;
+}
 
 function requireEnvironmentVariable(name: string): string {
   const value = process.env[name];
@@ -93,6 +91,45 @@ async function queryTinybarBalance(
 ): Promise<bigint> {
   const balance = await new AccountBalanceQuery().setAccountId(accountId).execute(client);
   return BigInt(balance.hbars.toTinybars().toString());
+}
+
+async function recoverTemporaryBalance(
+  operatorClient: Client,
+  operatorAccountId: AccountId,
+  sourceAccountId: AccountId,
+  sourcePrivateKey: PrivateKey,
+  label: string,
+): Promise<void> {
+  const balance = await queryTinybarBalance(operatorClient, sourceAccountId);
+  if (balance === 0n) {
+    return;
+  }
+
+  const amount = Hbar.fromTinybars(balance.toString());
+  const transaction = new TransferTransaction()
+    .addHbarTransfer(sourceAccountId, amount.negated())
+    .addHbarTransfer(operatorAccountId, amount)
+    .freezeWith(operatorClient);
+  await transaction.sign(sourcePrivateKey);
+  const response = await transaction.execute(operatorClient);
+  await response.getReceipt(operatorClient);
+
+  const remaining = await queryTinybarBalance(operatorClient, sourceAccountId);
+  if (remaining !== 0n) {
+    throw new Error(`${label} balance recovery was incomplete`);
+  }
+  console.log(`${label}: ${balance.toString()} tinybars recovered`);
+}
+
+function recordCleanupFailure(
+  failures: Error[],
+  label: string,
+  error: unknown,
+): void {
+  const message = error instanceof Error ? error.message : String(error);
+  const failure = new Error(`${label}: ${message}`, { cause: error });
+  failures.push(failure);
+  console.error(`Cleanup failure: ${failure.message}`);
 }
 
 async function createHbarSchedule(
@@ -156,6 +193,9 @@ async function main(): Promise<void> {
   );
   let agentClient: Client | null = null;
   let guardClient: Client | null = null;
+  const temporaryAccounts: TemporaryAccount[] = [];
+  const cleanupFailures: Error[] = [];
+  let primaryFailure: { readonly error: unknown } | null = null;
 
   try {
     const versionInfo = await new NetworkVersionInfoQuery().execute(operatorClient);
@@ -196,16 +236,31 @@ async function main(): Promise<void> {
       treasuryKey,
       TREASURY_INITIAL_BALANCE_TINYBARS,
     );
+    temporaryAccounts.push({
+      accountId: treasuryAccountId,
+      privateKey: ownerPrivateKey,
+      label: "Treasury account",
+    });
     const agentAccountId = await createAccount(
       operatorClient,
       agentPrivateKey.publicKey,
       AGENT_INITIAL_BALANCE_TINYBARS,
     );
+    temporaryAccounts.push({
+      accountId: agentAccountId,
+      privateKey: agentPrivateKey,
+      label: "Agent account",
+    });
     const guardAccountId = await createAccount(
       operatorClient,
       guardPrivateKey.publicKey,
       GUARD_INITIAL_BALANCE_TINYBARS,
     );
+    temporaryAccounts.push({
+      accountId: guardAccountId,
+      privateKey: guardPrivateKey,
+      label: "Guard account",
+    });
 
     agentClient = Client.forTestnet().setOperator(agentAccountId, agentPrivateKey);
     guardClient = Client.forTestnet().setOperator(guardAccountId, guardPrivateKey);
@@ -319,31 +374,10 @@ async function main(): Promise<void> {
       throw new Error(`in-policy schedule was refused: ${approvedReview.reason}`);
     }
 
-    const databaseDirectory = resolve("var");
-    mkdirSync(databaseDirectory, { recursive: true });
-    const reservation: MandateReviewReservation = {
-      tenantId: envelope.mandate.tenantId,
-      nonce: envelope.mandate.nonce,
-      mandateDigest: digest,
-      scheduleId: approvedScheduleId.toString(),
-    };
-    const reservationResult = reserveMandateReview(
-      resolve(databaseDirectory, "countersign.sqlite"),
-      reservation,
-    );
-    if (reservationResult.status !== "reserved") {
-      throw new Error(`mandate reservation did not create a new reservation: ${reservationResult.status}`);
-    }
-
     const signResponse = await new ScheduleSignTransaction()
       .setScheduleId(approvedScheduleId)
       .execute(guardClient);
     await signResponse.getReceipt(guardClient);
-    completeMandateReview(
-      resolve(databaseDirectory, "countersign.sqlite"),
-      reservation,
-      "guardSignatureSubmitted",
-    );
 
     const approvedScheduleAfterGuard = await querySchedule(
       operatorClient,
@@ -352,11 +386,6 @@ async function main(): Promise<void> {
     if (approvedScheduleAfterGuard.executed == null) {
       throw new Error("approved schedule did not execute after the guard signature");
     }
-    completeMandateReview(
-      resolve(databaseDirectory, "countersign.sqlite"),
-      reservation,
-      "executionConfirmed",
-    );
     const treasuryAfterApproval = await queryTinybarBalance(
       operatorClient,
       treasuryAccountId,
@@ -397,34 +426,56 @@ async function main(): Promise<void> {
     }
     console.log(`Refused schedule remained unexecuted: ${outOfPolicyScheduleId.toString()}`);
 
-    const treasuryBeforeRecovery = await queryTinybarBalance(
-      operatorClient,
-      treasuryAccountId,
-    );
-    const recoveryAmount = Hbar.fromTinybars(treasuryBeforeRecovery.toString());
-    const recoveryTransaction = new TransferTransaction()
-      .addHbarTransfer(treasuryAccountId, recoveryAmount.negated())
-      .addHbarTransfer(operatorAccountId, recoveryAmount)
-      .freezeWith(operatorClient);
-    await recoveryTransaction.sign(ownerPrivateKey);
-    const recoveryResponse = await recoveryTransaction.execute(operatorClient);
-    await recoveryResponse.getReceipt(operatorClient);
-    const treasuryAfterRecovery = await queryTinybarBalance(
-      operatorClient,
-      treasuryAccountId,
-    );
-    if (
-      treasuryBeforeRecovery - treasuryAfterRecovery !==
-      treasuryBeforeRecovery
-    ) {
-      throw new Error("owner recovery did not return the complete treasury balance");
-    }
-    console.log("Owner-only recovery branch executed successfully");
+  } catch (error) {
+    primaryFailure = { error };
   } finally {
-    guardClient?.close();
-    agentClient?.close();
-    operatorClient.close();
+    if (temporaryAccounts.length > 0) {
+      console.log("Cleanup: return temporary account balances to the operator");
+    }
+    for (const account of temporaryAccounts) {
+      try {
+        await recoverTemporaryBalance(
+          operatorClient,
+          operatorAccountId,
+          account.accountId,
+          account.privateKey,
+          account.label,
+        );
+      } catch (error) {
+        recordCleanupFailure(
+          cleanupFailures,
+          `${account.label} balance recovery failed`,
+          error,
+        );
+      }
+    }
+    try {
+      guardClient?.close();
+    } catch (error) {
+      recordCleanupFailure(cleanupFailures, "guard client close failed", error);
+    }
+    try {
+      agentClient?.close();
+    } catch (error) {
+      recordCleanupFailure(cleanupFailures, "agent client close failed", error);
+    }
+    try {
+      operatorClient.close();
+    } catch (error) {
+      recordCleanupFailure(cleanupFailures, "operator client close failed", error);
+    }
   }
+
+  if (primaryFailure !== null) {
+    throw primaryFailure.error;
+  }
+  if (cleanupFailures.length > 0) {
+    throw new AggregateError(
+      cleanupFailures,
+      "one or more temporary account cleanup operations failed",
+    );
+  }
+  console.log("Owner-only recovery branch executed successfully");
 }
 
 main().catch((error: unknown) => {

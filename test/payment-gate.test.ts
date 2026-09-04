@@ -8,12 +8,24 @@ import type {
   SupportedResponse,
   VerifyResponse,
 } from "@x402/core/types";
+import { x402Client } from "@x402/core/client";
 import type { FacilitatorClient } from "@x402/core/server";
 import {
   decodePaymentRequiredHeader,
   encodePaymentSignatureHeader,
+  x402HTTPClient,
 } from "@x402/core/http";
-import { KeyList, PrivateKey, type PublicKey } from "@hiero-ledger/sdk";
+import {
+  KeyList,
+  PrivateKey,
+  Transaction,
+  type PublicKey,
+} from "@hiero-ledger/sdk";
+import {
+  createClientHederaSigner,
+  inspectHederaTransaction,
+} from "@x402/hedera";
+import { ExactHederaScheme } from "@x402/hedera/exact/client";
 
 import {
   createPaymentGate,
@@ -21,9 +33,14 @@ import {
 } from "../src/payment-gate.ts";
 
 const operationalKey = PrivateKey.generateED25519().publicKey;
-const ownerKey = PrivateKey.generateED25519().publicKey;
-const agentKey = PrivateKey.generateED25519().publicKey;
-const guardKey = PrivateKey.generateED25519().publicKey;
+const ownerPrivateKey = PrivateKey.generateED25519();
+const ownerKey = ownerPrivateKey.publicKey;
+const agentPrivateKey = PrivateKey.generateED25519();
+const agentKey = agentPrivateKey.publicKey;
+const guardPrivateKey = PrivateKey.generateED25519();
+const guardKey = guardPrivateKey.publicKey;
+const paymentPayerKey = PrivateKey.generateED25519();
+const paymentPayerAccountId = "0.0.8001";
 
 const baseConfig: PaymentGateConfig = {
   resourceUrl: "https://guard.example/review",
@@ -104,6 +121,38 @@ async function paymentRequirements(
   const paymentRequired = decodePaymentRequiredHeader(encoded);
   assert.equal(paymentRequired.accepts.length, 1);
   return paymentRequired.accepts[0];
+}
+
+async function createPaymentSignatureHeader(
+  facilitator: FacilitatorClient,
+  payerAccountId: string,
+  payerPrivateKey: PrivateKey,
+): Promise<string> {
+  const requirements = await paymentRequirements(facilitator);
+  const payer = new x402Client()
+    .register(
+      "hedera:testnet",
+      new ExactHederaScheme(
+        createClientHederaSigner(payerAccountId, payerPrivateKey, {
+          network: "hedera:testnet",
+        }),
+      ),
+    )
+    .setSpendControls({
+      allowedAssets: [
+        {
+          network: "hedera:testnet",
+          asset: "0.0.0",
+          maxAmountPerPayment: baseConfig.priceTinybars,
+        },
+      ],
+    });
+  const paymentPayload = await new x402HTTPClient(payer).createPaymentPayload({
+    x402Version: 2,
+    resource: { url: baseConfig.resourceUrl },
+    accepts: [requirements],
+  });
+  return encodePaymentSignatureHeader(paymentPayload);
 }
 
 test("payment gate quotes one HBAR review check before settlement", async () => {
@@ -222,6 +271,46 @@ test("payment gate refuses a failed up-front settlement", async () => {
   assert.equal(facilitator.settled.length, 1);
 });
 
+test("payment gate refuses every treasury authorization signer before settlement", async (t) => {
+  for (const [name, accountId, privateKey] of [
+    ["owner", "0.0.8101", ownerPrivateKey],
+    ["agent", "0.0.8102", agentPrivateKey],
+    ["guard", "0.0.8103", guardPrivateKey],
+  ] as const) {
+    await t.test(name, async () => {
+      const facilitator = new OfflineFacilitator();
+      const paymentHeader = await createPaymentSignatureHeader(
+        facilitator,
+        accountId,
+        privateKey,
+      );
+      const gate = await createPaymentGate(baseConfig, facilitator);
+
+      const outcome = await gate.review(paymentHeader);
+
+      assert.equal(outcome.paid, false);
+      assert.equal(facilitator.verifyCalls, 0);
+      assert.equal(facilitator.settled.length, 0);
+    });
+  }
+});
+
+test("payment gate refuses the treasury account as payer before settlement", async () => {
+  const facilitator = new OfflineFacilitator();
+  const paymentHeader = await createPaymentSignatureHeader(
+    facilitator,
+    baseConfig.treasuryAuthorization.accountId,
+    paymentPayerKey,
+  );
+  const gate = await createPaymentGate(baseConfig, facilitator);
+
+  const outcome = await gate.review(paymentHeader);
+
+  assert.equal(outcome.paid, false);
+  assert.equal(facilitator.verifyCalls, 0);
+  assert.equal(facilitator.settled.length, 0);
+});
+
 test("invariant: the challenge exposes only the operational payment account", async () => {
   const requirements = await paymentRequirements(new OfflineFacilitator());
   const serialized = JSON.stringify(requirements);
@@ -240,6 +329,81 @@ test("invariant: the challenge exposes only the operational payment account", as
     assert.equal(serialized.includes(authorizationKey.toString()), false);
   }
   assert.equal(serialized.includes(operationalKey.toString()), false);
+});
+
+test("invariant: the decoded payment payload contains no treasury authorization identity", async () => {
+  const facilitator = new OfflineFacilitator();
+  const gate = await createPaymentGate(baseConfig, facilitator);
+  const challenge = await gate.review();
+  assert.equal(challenge.paid, false);
+  if (challenge.paid) {
+    throw new Error("expected an x402 payment requirement");
+  }
+  const encoded = challenge.headers["PAYMENT-REQUIRED"];
+  assert.ok(encoded);
+  const required = decodePaymentRequiredHeader(encoded);
+  const payer = new x402Client()
+    .register(
+      "hedera:testnet",
+      new ExactHederaScheme(
+        createClientHederaSigner(paymentPayerAccountId, paymentPayerKey, {
+          network: "hedera:testnet",
+        }),
+      ),
+    )
+    .setSpendControls({
+      allowedAssets: [
+        {
+          network: "hedera:testnet",
+          asset: "0.0.0",
+          maxAmountPerPayment: baseConfig.priceTinybars,
+        },
+      ],
+    });
+
+  const paymentPayload = await new x402HTTPClient(payer).createPaymentPayload(
+    required,
+  );
+  if (
+    paymentPayload.payload === null ||
+    typeof paymentPayload.payload !== "object" ||
+    !("transaction" in paymentPayload.payload) ||
+    typeof paymentPayload.payload.transaction !== "string"
+  ) {
+    throw new Error("payment payload must contain a Hedera transaction");
+  }
+
+  const inspected = inspectHederaTransaction(
+    paymentPayload.payload.transaction,
+  );
+  const transaction = Transaction.fromBytes(
+    Buffer.from(paymentPayload.payload.transaction, "base64"),
+  );
+  const signerKeys = transaction
+    .getSignatures()
+    .getFlatSignatureList()
+    .flatMap((signatures) => [...signatures.keys()]);
+
+  assert.equal(
+    inspected.hbarTransfers.find((transfer) => BigInt(transfer.amount) < 0n)
+      ?.accountId,
+    paymentPayerAccountId,
+  );
+  for (const authorizationAccountId of [
+    baseConfig.treasuryAuthorization.accountId,
+    "0.0.2001",
+    "0.0.3001",
+  ]) {
+    assert.notEqual(inspected.transactionIdAccountId, authorizationAccountId);
+  }
+  assert.ok(signerKeys.length > 0);
+  assert.equal(
+    signerKeys.every((key) => key.equals(paymentPayerKey.publicKey)),
+    true,
+  );
+  for (const authorizationKey of [ownerKey, agentKey, guardKey]) {
+    assert.equal(signerKeys.some((key) => key.equals(authorizationKey)), false);
+  }
 });
 
 test("payment gate refuses the treasury account as the payment account", async () => {

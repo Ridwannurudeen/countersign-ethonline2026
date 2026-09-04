@@ -15,6 +15,26 @@ const base58Alphabet =
   "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 const hederaCaip10Pattern =
   /^hedera:(mainnet|testnet|previewnet|devnet):\d+\.\d+\.\d+(?:-[a-zA-Z0-9]{5})?$/;
+const hcs14IdentifierPattern = /^uaid:(aid|did):[^\s]+$/;
+const maxHcsMessageBytes = 1_024;
+
+export function validateHcs14Identifier(
+  identifier: string,
+  field?: string,
+): void {
+  if (!hcs14IdentifierPattern.test(identifier)) {
+    throw new Error(
+      field === undefined
+        ? "HCS-14 identifier must not contain whitespace"
+        : `${field} must be an HCS-14 identifier without whitespace`,
+    );
+  }
+  if (Buffer.byteLength(identifier, "utf8") > maxHcsMessageBytes) {
+    throw new Error(
+      `${field ?? "HCS-14 identifier"} must fit in one HCS message chunk`,
+    );
+  }
+}
 
 function requireNonEmptyString(value: unknown, field: string): string {
   if (typeof value !== "string" || value.trim().length === 0) {
@@ -111,5 +131,7 @@ export function generateHcs14Aid(identity: Hcs14AgentIdentity): string {
     parameters.push(`domain=${domain}`);
   }
 
-  return `uaid:aid:${base58Encode(hash)};${parameters.join(";")}`;
+  const identifier = `uaid:aid:${base58Encode(hash)};${parameters.join(";")}`;
+  validateHcs14Identifier(identifier);
+  return identifier;
 }

@@ -120,3 +120,33 @@ test("generateHcs14Aid requires a Hedera CAIP-10 native ID for hcs-10", () => {
     }),
   );
 });
+
+test("generateHcs14Aid refuses whitespace in routing parameters", () => {
+  for (const identity of [
+    { ...officialHcs10Vector, registry: "counter sign" },
+    { ...officialHcs10Vector, protocol: "hcs 10" },
+    {
+      ...officialHcs10Vector,
+      protocol: "custom",
+      nativeId: "native identifier",
+    },
+    { ...officialHcs10Vector, uid: "operator 7" },
+    { ...officialHcs10Vector, domain: "guard example" },
+  ]) {
+    assert.throws(
+      () => generateHcs14Aid(identity),
+      /HCS-14 identifier must not contain whitespace/,
+    );
+  }
+});
+
+test("generateHcs14Aid refuses an identifier larger than one HCS message chunk", () => {
+  assert.throws(
+    () =>
+      generateHcs14Aid({
+        ...officialHcs10Vector,
+        domain: "a".repeat(1_024),
+      }),
+    /HCS-14 identifier must fit in one HCS message chunk/,
+  );
+});

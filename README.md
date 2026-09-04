@@ -1,6 +1,6 @@
 # Countersign
 
-Countersign resolves each proposed ScheduleID from Hedera consensus and validates the complete stored HBAR transfer and schedule envelope against an owner-signed mandate. Only an exact policy match receives the guard key; caller-supplied transaction summaries are never trusted.
+Countersign resolves each proposed ScheduleID from Hedera consensus and validates every decoded field in the supported HBAR transfer and schedule envelope against an owner-signed mandate. Only an exact policy match receives the guard key; caller-supplied transaction summaries are never trusted.
 
 The testnet treasury uses this authorization tree:
 
@@ -17,8 +17,10 @@ The owner can recover funds directly. The agent can publish a scheduled transfer
 
 Treasury schedules remain HBAR-only. The hosted `POST /review` boundary charges one
 configured HBAR check-unit through x402 on Hedera testnet before resolving consensus
-state. Payment uses a separate, consensus-verified single-key operational account;
-treasury authorization keys never enter the x402 payload.
+state. Production verifies that the configured single-key payment destination is
+separate from the treasury, expected agent, guard operator, and their authorization
+keys. The narrated flow also pays from a separately keyed account, so none of the
+treasury authorization keys enters its decoded x402 payload.
 
 The guard requires all of the following:
 
@@ -39,9 +41,13 @@ The guard requires all of the following:
 `createProductionReviewServer` composes the offline-tested HTTP handler with the live
 Hedera adapters. A request is parsed with an exact schema, the owner mandate signature
 is verified, and x402 settlement completes before the service performs consensus work.
-The service then resolves `ScheduleInfo` and network versions, calls the same pure
-`reviewSchedule` validator used by the spike, and atomically reserves the mandate nonce.
-Only the request that obtains the reservation may submit `ScheduleSignTransaction`.
+At startup, the service resolves the treasury and agent accounts, verifies the exact
+`1-of[owner, 2-of[agent, guard]]` tree, and requires the three authorization keys to be
+distinct. For each review it selects one consensus node, reads that node's versions,
+resolves `ScheduleInfo` from the same node, and reads the same node's versions again.
+Both complete version triples must match the audited allowlist. The service then calls
+the pure `reviewSchedule` validator and atomically reserves the mandate nonce. Only the
+request that obtains the reservation may submit `ScheduleSignTransaction`.
 
 Every completed authorization review, approved or refused, is published as a compact
 HCS record containing the ScheduleID, mandate digest, x402 settlement ID, tenant ID,
@@ -75,7 +81,13 @@ UTF8("COUNTERSIGN-MANDATE") || 0x00 || UTF8("1") || 0x00 || UTF8(JCS(mandate))
 
 `JCS` is RFC 8785 JSON Canonicalization Scheme via the pinned `json-canonicalize@3.0.0` package. `mandateDigest` is the lowercase SHA-256 hex digest of that complete domain-separated preimage. The digest is 64 ASCII characters, so it fits Hedera's 100-byte memo limit.
 
-Mandates are single-use per tenant. Before approval, the guard atomically reserves `(tenantId, nonce, mandateDigest, scheduleId)` in `var/countersign.sqlite`. A nonce must exceed the tenant's prior high-water mark. An identical retry returns the stored state; the same nonce bound to another digest or ScheduleID is refused.
+Mandates are single-use per tenant. Before approval, the guard atomically reserves
+`(tenantId, nonce, mandateDigest, scheduleId)` in the file-backed
+`var/countersign.sqlite`; in-memory databases are refused. A nonce must exceed the
+tenant's prior high-water mark. An identical completed retry returns the stored
+approved response before pending-only schedule validation. An identical pending retry,
+or the same nonce bound to another digest or ScheduleID, is refused. SQLite lock
+contention is bounded and returns retryable HTTP 503.
 
 ## Run the offline proof
 
@@ -88,8 +100,9 @@ npm test
 The test suite uses no network access. It covers mandate parsing and signatures, replay
 reservation, every schedule-envelope invariant, all 49 transaction variants through an
 exact `cryptoTransfer` oneof check, HBAR-only transfer structure, both approval and hook
-fields, numeric IDs, amount policy, both network-version gates, strict HTTP boundaries,
-x402 payment ordering and key separation, HCS-14 known answers, and HCS verdict records.
+fields, numeric IDs, amount policy, same-node before/after network-version gates,
+strict HTTP boundaries, real worker-thread replay contention, decoded x402 payment
+identity separation, HCS-14 known answers, and HCS verdict records.
 
 ## Run the narrated testnet flows
 
@@ -110,14 +123,14 @@ make demo
 # Equivalent: npm run demo
 ```
 
-The command creates fresh owner, agent, guard, and operational keys plus treasury,
-agent, guard, and operational payment accounts; prints the owner-signed mandate; publishes an in-policy schedule; and waits
+The command creates fresh owner, agent, guard, and payment-payer keys plus treasury,
+agent, guard, and payment-payer accounts; prints the owner-signed mandate; publishes an in-policy schedule; and waits
 for the mirror node to show it unexecuted with only the agent signature. It then
 shows the HTTP 402 challenge and exact HBAR price, pays through the live x402
 facilitator, and sends the paid request to the production guard. The output lists
-the consensus fields evaluated by `reviewSchedule`, then prints the guard signature,
-execution timestamp, exact treasury balance delta, HCS verdict link, and schedule
-and account evidence links.
+the consensus fields evaluated by `reviewSchedule`, then prints guard-approval status,
+the execution timestamp, mirror evidence with signer key prefixes, the exact treasury
+balance delta, the HCS verdict link, and schedule and account evidence links.
 
 Then run the refused path:
 
@@ -127,16 +140,17 @@ make attack
 ```
 
 This command builds the same authorization topology but proposes a transfer to the
-separately keyed operational account, which is outside the mandate allowlist. It
+separately keyed payment-payer account, which is outside the mandate allowlist. It
 still pays for the review. The final checks require the mirror schedule to have a
 null `executed_timestamp`, `deleted: false`, the agent's `public_key_prefix`, and no
 guard `public_key_prefix`. The command also proves the treasury balance is unchanged
 and prints the refused HCS verdict evidence link.
 
 Every run creates real testnet accounts and submits real transactions. Neither path
-has a simulated fallback. After the narrated outcome and evidence checks, the scripts
-use each temporary account's key to return its remaining HBAR to the funded operator;
-the operator pays those cleanup transaction fees. Every touched schedule is printed as
+has a simulated fallback. Whether the narrated review succeeds or fails, cleanup runs
+before the clients close and uses each created account's key to return its remaining
+HBAR to the funded operator; the operator pays those cleanup transaction fees. Cleanup
+failures are reported separately without replacing the original failure. Every touched schedule is printed as
 `https://testnet.mirrornode.hedera.com/api/v1/schedules/{id}`; account evidence uses
 the matching `/accounts/{id}` endpoint.
 
@@ -158,9 +172,9 @@ The complete run:
 1. Generates Ed25519 owner, agent, and guard keys and creates the nested-key treasury plus funded agent and guard accounts.
 2. Queries `AccountInfo` and verifies the stored authorization tree.
 3. Publishes an in-policy HBAR schedule from the agent, prints its mirror-node URL, and proves agent-only authorization did not execute it.
-4. Runs the production mandate and schedule validators, atomically reserves the nonce, submits `ScheduleSign` from the guard account, proves `executed` is present, and checks the exact treasury balance delta.
+4. Runs the production mandate and schedule validators, submits `ScheduleSign` from the guard account, proves `executed` is present, and checks the exact treasury balance delta.
 5. Publishes a recipient-mismatch schedule, prints its mirror-node URL, refuses it without adding the guard key, and proves it remains unexecuted.
-6. Uses the owner branch in one direct transfer to return the treasury's complete remaining balance to the operator and verifies the delta.
+6. In `finally`, uses each created account's key to return its complete remaining balance to the operator before closing the clients.
 
 The spike creates testnet accounts and submits real testnet transactions. Each printed mirror-node URL is an independent evidence surface for execution state and signer prefixes.
 
