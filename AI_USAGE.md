@@ -4,8 +4,9 @@
 
 OpenAI Codex (`codex-cli` 0.153.2) authored 100% of the source, tests, and scripts in this repository:
 
-- Source: `src/mandate.ts`, `src/replay-store.ts`, and `src/review-schedule.ts`.
-- Tests: `test/mandate.test.ts`, `test/replay-store.test.ts`, and `test/review-schedule.test.ts`.
+- Source: every module under `src/`, including the mandate, replay store, schedule
+  validator, x402 gate, HCS-14 identity generator, HCS verdict log, and review server.
+- Tests: every file under `test/`.
 - Script: `scripts/spike-nested-key.ts`.
 
 ## Anthropic Claude
@@ -18,8 +19,13 @@ A Day-1 design consultation with Codex overturned the project's original validat
 
 ## Dependency verification
 
-All pinned dependency versions were verified against the live npm registry instead of accepted from model recall. This matters because models can misremember package names and versions: `@hashgraph/sdk` is stale at 2.81.0, while `@hiero-ledger/sdk` 2.87.0 is the maintained package used here.
+All direct dependency versions are exact pins. The paid service uses
+`@hiero-ledger/sdk@2.85.0`, `@x402/core@2.25.0`, and `@x402/hedera@2.25.0` so npm resolves
+one shared SDK instance across the application and the Hedera x402 mechanism.
 
 ## Verification limit
 
-No AI system has verified live Hedera network behavior for this repository. `scripts/spike-nested-key.ts` is the live testnet check intended to perform that verification.
+No AI system has verified live Hedera schedule approval, x402 facilitator settlement,
+or HCS topic submission for this repository. The offline suite verifies orchestration
+and wire construction with controlled adapters; credentialed testnet execution remains
+required.

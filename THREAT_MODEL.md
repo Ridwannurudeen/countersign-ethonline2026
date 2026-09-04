@@ -1,8 +1,8 @@
 # Countersign security invariants
 
-This document covers the Day-1 HBAR schedule validator and credentialed testnet
-spike. Approval depends on an owner-signed mandate, guard-controlled policy, and a
-schedule independently resolved from Hedera consensus.
+This document covers the HBAR schedule validator, paid review service, and credentialed
+testnet spike. Approval depends on an owner-signed mandate, guard-controlled policy, and
+a schedule independently resolved from Hedera consensus.
 
 ## Trust boundaries
 
@@ -40,6 +40,9 @@ Inputs that are never trusted on their own:
 | Balance adjustments | **INVARIANT:** The HBAR transfer has exactly two adjustments: one negative debit from the configured treasury and one positive credit to an allowlisted recipient. The amounts are equal and opposite, and the credit does not exceed the mandate cap. | The validator requires two parsed adjustments, locates the treasury by configured account ID, treats the other entry as the sole recipient, checks signs and zero-sum equality, and applies the mandate allowlist and cap. | `reviewSchedule refuses an extra balance adjustment`<br>`reviewSchedule refuses fewer than two balance adjustments`<br>`reviewSchedule refuses a treasury adjustment that is not the debit`<br>`reviewSchedule refuses a recipient outside the allowlist`<br>`reviewSchedule refuses an amount above the mandate cap`<br>`reviewSchedule refuses a non-positive amount`<br>`reviewSchedule refuses unequal balance adjustments` |
 | Per-adjustment flags | **INVARIANT:** Every adjustment contains only audited fields, uses a numeric account ID without an alias or additional decoded fields, has a valid integer amount, sets `isApproval` to `false`, and omits both allowance-hook fields. | Per-object field allowlists reject additional decoded adjustment and account-ID fields. `numericAccountId` requires non-negative shard, realm, and account numbers and rejects aliases. The amount parser requires an integer representation; explicit checks require `isApproval === false` and absent hooks. | `reviewSchedule refuses isApproval on adjustment 1`<br>`reviewSchedule refuses isApproval on adjustment 2`<br>`reviewSchedule refuses preTxAllowanceHook`<br>`reviewSchedule refuses prePostTxAllowanceHook`<br>`reviewSchedule refuses alias account identifiers`<br>`reviewSchedule refuses additional account-identifier fields`<br>`reviewSchedule refuses additional balance-adjustment fields` |
 | Network schema version gate | **INVARIANT:** Review proceeds only when both the network protobuf and services `major.minor.patch` triples exactly equal the guard's reviewed allowlist. Any mismatch fails closed before schedule validation. | `formatVersion` accepts only non-negative safe-integer components. `reviewSchedule` compares the formatted protobuf and services versions with their independently configured allowed strings before reading the schedule envelope. | `reviewSchedule refuses a protobuf network-version change`<br>`reviewSchedule refuses a services network-version change` |
+| Paid review boundary | **INVARIANT:** Malformed requests and invalid mandates never reach payment; unpaid requests never reach consensus; paid review uses an operational key outside the treasury authorization tree. | The server parses an exact request schema and verifies the owner signature before x402. The x402 gate settles up front, and production startup resolves the operational account from consensus and verifies its single key is distinct. | `POST /review rejects unknown top-level fields before payment`<br>`POST /review rejects an invalid mandate signature before payment`<br>`POST /review returns the payment challenge without resolving consensus`<br>`production server verifies the operational payment account key from consensus` |
+| Replay ownership | **INVARIANT:** Exactly the request that atomically reserves a new mandate tuple may submit schedule approval. | A new reservation returns `reserved`. Identical pending retries and conflicting/high-water-mark nonces are refused without submission. | `POST /review refuses a pending retry without submitting approval`<br>`POST /review records a replay refusal without submitting approval` |
+| Verdict evidence | **INVARIANT:** Every completed authorization review publishes an approved/refused record to the configured HCS topic before the service returns a successful response. | HCS records bind the review outcome, ScheduleID, mandate digest, settlement ID, tenant, and both HCS-14 participant identifiers. Configured topics must be immutable, submit-key protected, and fee-free. | `VerdictLog records an approved review and returns its mirror-node URL`<br>`VerdictLog records a refused review as evidence`<br>`validateVerdictTopicInfo refuses a topic with an admin key` |
 
 ## Residual limitations
 
@@ -61,3 +64,10 @@ Inputs that are never trusted on their own:
 - The outer `1-of` treasury key has a direct owner branch. The owner key alone can
   always move funds; this is deliberate recovery authority. The guard constrains the
   agent branch, not the owner branch.
+- Schedule approval and HCS publication are separate consensus operations. A process
+  exit after schedule approval but before HCS submission can leave an approved schedule
+  without its verdict record. The handler returns no successful review response when
+  HCS publication fails, but durable outbox reconciliation is not implemented.
+- The required `@hiero-ledger/sdk@2.85.0` alignment currently resolves transitive
+  packages in published high-severity advisory ranges. This build must not be deployed
+  until a compatible dependency set or verified override resolves those advisories.

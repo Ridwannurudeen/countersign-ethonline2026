@@ -13,9 +13,12 @@ The testnet treasury uses this authorization tree:
 
 The owner can recover funds directly. The agent can publish a scheduled transfer, but the nested branch remains incomplete until the guard independently resolves that ScheduleID and approves every invariant. Hedera executes the schedule only after the authorization tree is satisfied.
 
-## Day-1 scope
+## Current scope
 
-Day 1 supports HBAR transfers only. HTS transfers and x402 are intentionally deferred.
+Treasury schedules remain HBAR-only. The hosted `POST /review` boundary charges one
+configured HBAR check-unit through x402 on Hedera testnet before resolving consensus
+state. Payment uses a separate, consensus-verified single-key operational account;
+treasury authorization keys never enter the x402 payload.
 
 The guard requires all of the following:
 
@@ -30,6 +33,21 @@ The guard requires all of the following:
 - The transfer contains HBAR only and exactly two adjustments: the configured treasury debit and one allowlisted recipient credit.
 - The amount is positive, equal and opposite, and no greater than the mandate cap.
 - Both adjustments use canonical numeric account IDs, set `isApproval` to false, omit allowance hooks, and contain no unsupported fields from the audited schema.
+
+## Paid review service
+
+`createProductionReviewServer` composes the offline-tested HTTP handler with the live
+Hedera adapters. A request is parsed with an exact schema, the owner mandate signature
+is verified, and x402 settlement completes before the service performs consensus work.
+The service then resolves `ScheduleInfo` and network versions, calls the same pure
+`reviewSchedule` validator used by the spike, and atomically reserves the mandate nonce.
+Only the request that obtains the reservation may submit `ScheduleSignTransaction`.
+
+Every completed authorization review, approved or refused, is published as a compact
+HCS record containing the ScheduleID, mandate digest, x402 settlement ID, tenant ID,
+and deterministic HCS-14 identifiers for the agent and guard. Configured verdict topics
+must be immutable, submit-key protected, and free of custom fees. The HTTP response links
+directly to the resulting mirror-node topic message.
 
 The validator inspects `ScheduleInfo.schedulableTransactionBody` directly. Approval authorizes the immutable ScheduleID that the guard resolved from consensus.
 
@@ -67,7 +85,11 @@ npm run typecheck
 npm test
 ```
 
-The test suite uses no network access. It covers mandate parsing and signatures, replay reservation, every schedule-envelope invariant, all 49 transaction variants through an exact `cryptoTransfer` oneof check, HBAR-only transfer structure, both approval and hook fields, numeric IDs, amount policy, and both network-version gates.
+The test suite uses no network access. It covers mandate parsing and signatures, replay
+reservation, every schedule-envelope invariant, all 49 transaction variants through an
+exact `cryptoTransfer` oneof check, HBAR-only transfer structure, both approval and hook
+fields, numeric IDs, amount policy, both network-version gates, strict HTTP boundaries,
+x402 payment ordering and key separation, HCS-14 known answers, and HCS verdict records.
 
 ## Run the Hedera testnet spike
 
@@ -98,6 +120,10 @@ The spike creates testnet accounts and submits real testnet transactions. Each p
 src/mandate.ts          Mandate parsing, canonicalization, signature verification, digest
 src/review-schedule.ts  Pure fail-closed schedule review
 src/replay-store.ts     Durable single-use nonce reservation
+src/payment-gate.ts     Up-front Hedera x402 review payment
+src/hcs14.ts            Deterministic HCS-14 AID generation
+src/verdict-log.ts      Immutable HCS verdict topic and record submission
+src/server.ts           Offline-testable HTTP handler and production adapter composition
 scripts/spike-nested-key.ts
 test/
 var/                    Runtime SQLite data; ignored by git
