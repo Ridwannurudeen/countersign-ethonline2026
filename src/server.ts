@@ -33,6 +33,7 @@ import {
 } from "./replay-store.ts";
 import {
   reviewSchedule,
+  type ReviewCheck,
   type ReviewContext,
   type ReviewableScheduleInfo,
 } from "./review-schedule.ts";
@@ -83,6 +84,12 @@ export interface ReviewServerDependencies {
     agent: string;
     guard: string;
   };
+  reviewObserver?: ReviewObserver;
+}
+
+export interface ReviewObserver {
+  onPaymentSettled?(settlementId: string): void;
+  onReviewCheck?(check: ReviewCheck): void;
 }
 
 export interface ProductionReviewServerConfig {
@@ -100,6 +107,7 @@ export interface ProductionReviewServerConfig {
     agent: Hcs14AgentIdentity;
     guard: Hcs14AgentIdentity;
   };
+  reviewObserver?: ReviewObserver;
 }
 
 export interface ProductionReviewServerServices {
@@ -344,6 +352,7 @@ async function handleReviewRequest(
   if (payment.settlementId.length === 0) {
     throw new Error("payment settlement ID is missing");
   }
+  dependencies.reviewObserver?.onPaymentSettled?.(payment.settlementId);
   for (const [name, value] of Object.entries(payment.responseHeaders)) {
     response.setHeader(name, value);
   }
@@ -357,6 +366,7 @@ async function handleReviewRequest(
       ...resolved.context,
       requestedScheduleId: parsedRequest.scheduleId,
     },
+    (check) => dependencies.reviewObserver?.onReviewCheck?.(check),
   );
 
   if (!reviewOutcome.approved) {
@@ -574,5 +584,6 @@ export async function createProductionReviewServer(
     },
     verdictLog,
     participantIdentifiers,
+    reviewObserver: config.reviewObserver,
   });
 }

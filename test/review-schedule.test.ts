@@ -7,6 +7,7 @@ import { proto } from "@hiero-ledger/proto";
 import { mandateDigest, type Mandate } from "../src/mandate.ts";
 import {
   reviewSchedule,
+  type ReviewCheck,
   type ReviewContext,
   type ReviewableScheduleInfo,
 } from "../src/review-schedule.ts";
@@ -174,6 +175,26 @@ test("reviewSchedule approves a complete in-policy HBAR schedule", () => {
     approved: true,
     recipientAccountId: "0.0.1002",
     amountTinybars: "25000000",
+  });
+});
+
+test("reviewSchedule reports its ordered invariant results", () => {
+  const checks: ReviewCheck[] = [];
+
+  const outcome = reviewSchedule(schedule(), mandate, baseContext, (check) => {
+    checks.push(check);
+  });
+
+  assert.equal(outcome.approved, true);
+  assert.ok(checks.length > 30);
+  assert.equal(checks.every((check) => check.passed), true);
+  assert.deepEqual(checks[0], {
+    invariant: "network protobuf version is approved",
+    passed: true,
+  });
+  assert.deepEqual(checks.at(-1), {
+    invariant: "transfer amount is within the mandate cap",
+    passed: true,
   });
 });
 

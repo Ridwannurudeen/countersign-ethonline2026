@@ -119,6 +119,13 @@ export type ReviewOutcome =
     }
   | { readonly approved: false; readonly reason: string };
 
+export interface ReviewCheck {
+  readonly invariant: string;
+  readonly passed: boolean;
+}
+
+export type ReviewCheckReporter = (check: ReviewCheck) => void;
+
 function refusal(reason: string): ReviewOutcome {
   return { approved: false, reason };
 }
@@ -205,58 +212,116 @@ export function reviewSchedule(
   info: ReviewableScheduleInfo,
   mandate: Mandate,
   context: ReviewContext,
+  reportCheck?: ReviewCheckReporter,
 ): ReviewOutcome {
-  const protobufVersion = formatVersion(context.networkVersions.protobuf);
-  if (protobufVersion !== context.allowedNetworkVersions.protobuf) {
-    return refusal("network protobuf version is not approved for this validator");
-  }
-  const servicesVersion = formatVersion(context.networkVersions.services);
-  if (servicesVersion !== context.allowedNetworkVersions.services) {
-    return refusal("network services version is not approved for this validator");
+  function check(
+    invariant: string,
+    passed: boolean,
+    reason: string,
+  ): ReviewOutcome | false {
+    reportCheck?.({ invariant, passed });
+    return passed ? false : refusal(reason);
   }
 
-  if (info.scheduleId.toString() !== context.requestedScheduleId) {
-    return refusal("returned ScheduleID does not match the requested ScheduleID");
-  }
-  if (info.creatorAccountId?.toString() !== context.expectedAgentAccountId) {
-    return refusal("schedule creator is not the expected agent account");
-  }
-  if (info.payerAccountId?.toString() !== context.expectedAgentAccountId) {
-    return refusal("scheduled transaction payer is not the expected agent account");
-  }
-  if (mandate.treasuryAccountId !== context.treasuryAccountId) {
-    return refusal("mandate treasury does not match the configured treasury account");
-  }
+  let denialCase: ReviewOutcome | false;
+  const protobufVersion = formatVersion(context.networkVersions.protobuf);
+  denialCase = check(
+    "network protobuf version is approved",
+    protobufVersion === context.allowedNetworkVersions.protobuf,
+    "network protobuf version is not approved for this validator",
+  );
+  if (denialCase !== false) return denialCase;
+  const servicesVersion = formatVersion(context.networkVersions.services);
+  denialCase = check(
+    "network services version is approved",
+    servicesVersion === context.allowedNetworkVersions.services,
+    "network services version is not approved for this validator",
+  );
+  if (denialCase !== false) return denialCase;
+
+  denialCase = check(
+    "returned ScheduleID matches the requested ScheduleID",
+    info.scheduleId.toString() === context.requestedScheduleId,
+    "returned ScheduleID does not match the requested ScheduleID",
+  );
+  if (denialCase !== false) return denialCase;
+  denialCase = check(
+    "schedule creator is the expected agent account",
+    info.creatorAccountId?.toString() === context.expectedAgentAccountId,
+    "schedule creator is not the expected agent account",
+  );
+  if (denialCase !== false) return denialCase;
+  denialCase = check(
+    "scheduled transaction payer is the expected agent account",
+    info.payerAccountId?.toString() === context.expectedAgentAccountId,
+    "scheduled transaction payer is not the expected agent account",
+  );
+  if (denialCase !== false) return denialCase;
+  denialCase = check(
+    "mandate treasury matches the configured treasury account",
+    mandate.treasuryAccountId === context.treasuryAccountId,
+    "mandate treasury does not match the configured treasury account",
+  );
+  if (denialCase !== false) return denialCase;
 
   const expectedDigest = mandateDigest(mandate);
-  if (info.scheduleMemo !== expectedDigest) {
-    return refusal("schedule memo is not bound to the mandate digest");
-  }
-  if (info.adminKey != null) {
-    return refusal("schedule must not have an admin key");
-  }
-  if (info.waitForExpiry) {
-    return refusal("schedule waitForExpiry must be false");
-  }
-  if (info.executed != null) {
-    return refusal("schedule has already executed");
-  }
-  if (info.deleted != null) {
-    return refusal("schedule has been deleted");
-  }
+  denialCase = check(
+    "schedule memo is bound to the mandate digest",
+    info.scheduleMemo === expectedDigest,
+    "schedule memo is not bound to the mandate digest",
+  );
+  if (denialCase !== false) return denialCase;
+  denialCase = check(
+    "schedule has no admin key",
+    info.adminKey == null,
+    "schedule must not have an admin key",
+  );
+  if (denialCase !== false) return denialCase;
+  denialCase = check(
+    "schedule waitForExpiry is false",
+    !info.waitForExpiry,
+    "schedule waitForExpiry must be false",
+  );
+  if (denialCase !== false) return denialCase;
+  denialCase = check(
+    "schedule is not already executed",
+    info.executed == null,
+    "schedule has already executed",
+  );
+  if (denialCase !== false) return denialCase;
+  denialCase = check(
+    "schedule is not deleted",
+    info.deleted == null,
+    "schedule has been deleted",
+  );
+  if (denialCase !== false) return denialCase;
 
   const now = integerValue({ toString: () => context.nowEpochSeconds });
   const validFrom = integerValue({ toString: () => mandate.validFromEpochSeconds });
   const expiresAt = integerValue({ toString: () => mandate.expiresAtEpochSeconds });
   if (now == null || validFrom == null || expiresAt == null) {
+    reportCheck?.({
+      invariant: "review time and mandate validity are valid integers",
+      passed: false,
+    });
     return refusal("review time or mandate validity is invalid");
   }
-  if (now < validFrom) {
-    return refusal("mandate is not yet valid");
-  }
-  if (now >= expiresAt) {
-    return refusal("mandate is expired");
-  }
+  reportCheck?.({
+    invariant: "review time and mandate validity are valid integers",
+    passed: true,
+  });
+  denialCase = check(
+    "mandate validity has started",
+    now >= validFrom,
+    "mandate is not yet valid",
+  );
+  if (denialCase !== false) return denialCase;
+  denialCase = check(
+    "mandate is not expired",
+    now < expiresAt,
+    "mandate is expired",
+  );
+  if (denialCase !== false) return denialCase;
   const scheduleExpiration = integerValue(info.expirationTime?.seconds);
   const scheduleExpirationNanos = integerValue(info.expirationTime?.nanos);
   if (
@@ -265,125 +330,256 @@ export function reviewSchedule(
     scheduleExpirationNanos < 0n ||
     scheduleExpirationNanos >= 1_000_000_000n
   ) {
+    reportCheck?.({
+      invariant: "schedule expiration is present and valid",
+      passed: false,
+    });
     return refusal("schedule expiration is missing or invalid");
   }
-  if (
-    scheduleExpiration > expiresAt ||
-    (scheduleExpiration === expiresAt && scheduleExpirationNanos > 0n)
-  ) {
-    return refusal("schedule expiration exceeds mandate validity");
-  }
+  reportCheck?.({
+    invariant: "schedule expiration is present and valid",
+    passed: true,
+  });
+  denialCase = check(
+    "schedule expiration does not exceed mandate validity",
+    scheduleExpiration < expiresAt ||
+      (scheduleExpiration === expiresAt && scheduleExpirationNanos === 0n),
+    "schedule expiration exceeds mandate validity",
+  );
+  if (denialCase !== false) return denialCase;
 
-  if (!includesPublicKey(info.signers, context.agentPublicKey)) {
-    return refusal("agent key is absent from the schedule signers");
-  }
-  if (includesPublicKey(info.signers, context.guardPublicKey)) {
-    return refusal("guard key is already present in the schedule signers");
-  }
+  denialCase = check(
+    "agent key is present in the schedule signers",
+    includesPublicKey(info.signers, context.agentPublicKey),
+    "agent key is absent from the schedule signers",
+  );
+  if (denialCase !== false) return denialCase;
+  denialCase = check(
+    "guard key is absent from the schedule signers",
+    !includesPublicKey(info.signers, context.guardPublicKey),
+    "guard key is already present in the schedule signers",
+  );
+  if (denialCase !== false) return denialCase;
 
   const schedulableBody = info.schedulableTransactionBody;
   if (schedulableBody == null) {
+    reportCheck?.({
+      invariant: "schedulable transaction body is present",
+      passed: false,
+    });
     return refusal("schedulable body is missing");
   }
+  reportCheck?.({
+    invariant: "schedulable transaction body is present",
+    passed: true,
+  });
   const unsupportedBodyField = unsupportedField(
     schedulableBody,
     SCHEDULABLE_BODY_FIELDS,
   );
   if (unsupportedBodyField != null) {
+    reportCheck?.({
+      invariant: "schedulable transaction body contains only reviewed fields",
+      passed: false,
+    });
     return refusal(`unsupported schedulable-body field: ${unsupportedBodyField}`);
   }
+  reportCheck?.({
+    invariant: "schedulable transaction body contains only reviewed fields",
+    passed: true,
+  });
 
   const populatedVariants = SCHEDULABLE_TRANSACTION_VARIANTS.filter(
     (field) => schedulableBody[field] != null,
   );
-  if (
-    populatedVariants.length !== 1 ||
-    populatedVariants[0] !== "cryptoTransfer"
-  ) {
-    return refusal("schedulable body must contain exactly one cryptoTransfer variant");
-  }
+  denialCase = check(
+    "schedulable body contains exactly one cryptoTransfer variant",
+    populatedVariants.length === 1 &&
+      populatedVariants[0] === "cryptoTransfer",
+    "schedulable body must contain exactly one cryptoTransfer variant",
+  );
+  if (denialCase !== false) return denialCase;
 
   const transactionFee = integerValue(schedulableBody.transactionFee);
   const expectedFee = integerValue({
     toString: () => context.protocolMaxFeeTinybars,
   });
-  if (transactionFee == null || expectedFee == null || transactionFee !== expectedFee) {
-    return refusal("transaction fee does not equal the fixed protocol value");
-  }
-  if (schedulableBody.memo !== expectedDigest) {
-    return refusal("transaction memo is not bound to the mandate digest");
-  }
-  if (schedulableBody.maxCustomFees == null || schedulableBody.maxCustomFees.length !== 0) {
-    return refusal("maxCustomFees must be empty");
-  }
+  denialCase = check(
+    "transaction fee equals the fixed protocol value",
+    transactionFee != null &&
+      expectedFee != null &&
+      transactionFee === expectedFee,
+    "transaction fee does not equal the fixed protocol value",
+  );
+  if (denialCase !== false) return denialCase;
+  denialCase = check(
+    "transaction memo is bound to the mandate digest",
+    schedulableBody.memo === expectedDigest,
+    "transaction memo is not bound to the mandate digest",
+  );
+  if (denialCase !== false) return denialCase;
+  denialCase = check(
+    "maxCustomFees is empty",
+    schedulableBody.maxCustomFees != null &&
+      schedulableBody.maxCustomFees.length === 0,
+    "maxCustomFees must be empty",
+  );
+  if (denialCase !== false) return denialCase;
 
   const cryptoTransfer = schedulableBody.cryptoTransfer;
   if (cryptoTransfer == null) {
+    reportCheck?.({
+      invariant: "cryptoTransfer body is present",
+      passed: false,
+    });
     return refusal("cryptoTransfer body is missing");
   }
+  reportCheck?.({ invariant: "cryptoTransfer body is present", passed: true });
   const unsupportedCryptoField = unsupportedField(
     cryptoTransfer,
     CRYPTO_TRANSFER_FIELDS,
   );
   if (unsupportedCryptoField != null) {
+    reportCheck?.({
+      invariant: "cryptoTransfer body contains only reviewed fields",
+      passed: false,
+    });
     return refusal(`unsupported crypto-transfer field: ${unsupportedCryptoField}`);
   }
-  if (cryptoTransfer.tokenTransfers == null || cryptoTransfer.tokenTransfers.length !== 0) {
-    return refusal("token transfers must be empty");
-  }
+  reportCheck?.({
+    invariant: "cryptoTransfer body contains only reviewed fields",
+    passed: true,
+  });
+  denialCase = check(
+    "token transfers are empty",
+    cryptoTransfer.tokenTransfers != null &&
+      cryptoTransfer.tokenTransfers.length === 0,
+    "token transfers must be empty",
+  );
+  if (denialCase !== false) return denialCase;
 
   const transferList = cryptoTransfer.transfers;
   if (transferList == null) {
+    reportCheck?.({
+      invariant: "HBAR transfer list is present",
+      passed: false,
+    });
     return refusal("HBAR transfer list is missing");
   }
+  reportCheck?.({ invariant: "HBAR transfer list is present", passed: true });
   const unsupportedTransferListField = unsupportedField(
     transferList,
     TRANSFER_LIST_FIELDS,
   );
   if (unsupportedTransferListField != null) {
+    reportCheck?.({
+      invariant: "HBAR transfer list contains only reviewed fields",
+      passed: false,
+    });
     return refusal(
       `unsupported HBAR transfer-list field: ${unsupportedTransferListField}`,
     );
   }
+  reportCheck?.({
+    invariant: "HBAR transfer list contains only reviewed fields",
+    passed: true,
+  });
   const adjustments = transferList.accountAmounts;
   if (adjustments == null || adjustments.length !== 2) {
+    reportCheck?.({
+      invariant: "HBAR transfer contains exactly two balance adjustments",
+      passed: false,
+    });
     return refusal("HBAR transfer must contain exactly two balance adjustments");
   }
+  reportCheck?.({
+    invariant: "HBAR transfer contains exactly two balance adjustments",
+    passed: true,
+  });
 
   const parsedAdjustments: { accountId: string; amount: bigint }[] = [];
-  for (const adjustment of adjustments) {
+  for (const [index, adjustment] of adjustments.entries()) {
+    const label = `balance adjustment ${index + 1}`;
     const unsupportedAdjustmentField = unsupportedField(
       adjustment,
       BALANCE_ADJUSTMENT_FIELDS,
     );
     if (unsupportedAdjustmentField != null) {
+      reportCheck?.({
+        invariant: `${label} contains only reviewed fields`,
+        passed: false,
+      });
       return refusal(
         `unsupported balance-adjustment field: ${unsupportedAdjustmentField}`,
       );
     }
+    reportCheck?.({
+      invariant: `${label} contains only reviewed fields`,
+      passed: true,
+    });
     if (adjustment.isApproval !== false) {
+      reportCheck?.({
+        invariant: `${label} isApproval is false`,
+        passed: false,
+      });
       return refusal("balance adjustment isApproval must be false");
     }
+    reportCheck?.({
+      invariant: `${label} isApproval is false`,
+      passed: true,
+    });
     if (
       adjustment.preTxAllowanceHook != null ||
       adjustment.prePostTxAllowanceHook != null
     ) {
+      reportCheck?.({
+        invariant: `${label} contains no allowance hook`,
+        passed: false,
+      });
       return refusal("balance adjustment must not contain an allowance hook");
     }
+    reportCheck?.({
+      invariant: `${label} contains no allowance hook`,
+      passed: true,
+    });
     if (
       adjustment.accountID != null &&
       unsupportedField(adjustment.accountID, ACCOUNT_ID_FIELDS) != null
     ) {
+      reportCheck?.({
+        invariant: `${label} account ID contains only reviewed fields`,
+        passed: false,
+      });
       return refusal("unsupported account-ID field in balance adjustment");
     }
+    reportCheck?.({
+      invariant: `${label} account ID contains only reviewed fields`,
+      passed: true,
+    });
     const accountId = numericAccountId(adjustment.accountID);
     if (accountId == null) {
+      reportCheck?.({
+        invariant: `${label} uses a numeric account ID without an alias`,
+        passed: false,
+      });
       return refusal("balance adjustment must use a numeric account ID without an alias");
     }
+    reportCheck?.({
+      invariant: `${label} uses a numeric account ID without an alias`,
+      passed: true,
+    });
     const amount = integerValue(adjustment.amount);
     if (amount == null) {
+      reportCheck?.({
+        invariant: `${label} amount is a valid integer`,
+        passed: false,
+      });
       return refusal("balance adjustment amount is invalid");
     }
+    reportCheck?.({
+      invariant: `${label} amount is a valid integer`,
+      passed: true,
+    });
     parsedAdjustments.push({ accountId, amount });
   }
 
@@ -391,27 +587,55 @@ export function reviewSchedule(
     ({ accountId }) => accountId === context.treasuryAccountId,
   );
   if (treasuryAdjustment == null) {
+    reportCheck?.({
+      invariant: "HBAR transfer contains the required treasury debit",
+      passed: false,
+    });
     return refusal("HBAR transfer does not contain the required treasury debit");
   }
+  reportCheck?.({
+    invariant: "HBAR transfer contains the required treasury debit",
+    passed: true,
+  });
   const recipientAdjustment = parsedAdjustments.find(
     ({ accountId }) => accountId !== context.treasuryAccountId,
   );
   if (recipientAdjustment == null) {
+    reportCheck?.({
+      invariant: "HBAR transfer contains exactly one recipient",
+      passed: false,
+    });
     return refusal("HBAR transfer does not contain exactly one recipient");
   }
-  if (treasuryAdjustment.amount >= 0n || recipientAdjustment.amount <= 0n) {
-    return refusal("transfer amount must be positive");
-  }
-  if (-treasuryAdjustment.amount !== recipientAdjustment.amount) {
-    return refusal("treasury debit and recipient credit must be equal and opposite");
-  }
-  if (!mandate.recipientAllowlist.includes(recipientAdjustment.accountId)) {
-    return refusal("recipient is outside the mandate allowlist");
-  }
+  reportCheck?.({
+    invariant: "HBAR transfer contains exactly one recipient",
+    passed: true,
+  });
+  denialCase = check(
+    "treasury debit is negative and recipient credit is positive",
+    treasuryAdjustment.amount < 0n && recipientAdjustment.amount > 0n,
+    "transfer amount must be positive",
+  );
+  if (denialCase !== false) return denialCase;
+  denialCase = check(
+    "treasury debit and recipient credit are equal and opposite",
+    -treasuryAdjustment.amount === recipientAdjustment.amount,
+    "treasury debit and recipient credit must be equal and opposite",
+  );
+  if (denialCase !== false) return denialCase;
+  denialCase = check(
+    "recipient is on the mandate allowlist",
+    mandate.recipientAllowlist.includes(recipientAdjustment.accountId),
+    "recipient is outside the mandate allowlist",
+  );
+  if (denialCase !== false) return denialCase;
   const mandateCap = integerValue({ toString: () => mandate.maxAmountTinybars });
-  if (mandateCap == null || recipientAdjustment.amount > mandateCap) {
-    return refusal("transfer amount exceeds mandate cap");
-  }
+  denialCase = check(
+    "transfer amount is within the mandate cap",
+    mandateCap != null && recipientAdjustment.amount <= mandateCap,
+    "transfer amount exceeds mandate cap",
+  );
+  if (denialCase !== false) return denialCase;
 
   return {
     approved: true,

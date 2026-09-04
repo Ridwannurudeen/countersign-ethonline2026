@@ -9,9 +9,11 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "demo": "node --env-file-if-exists=.env --experimental-strip-types scripts/demo.ts",
+    "refusal": "node --env-file-if-exists=.env --experimental-strip-types scripts/refusal.ts",
+    "spike": "node --env-file-if-exists=.env --experimental-strip-types scripts/spike-nested-key.ts",
     "test": "node --test --experimental-strip-types test/**/*.test.ts",
-    "spike": "node --env-file-if-exists=.env --experimental-strip-types scripts/spike-nested-key.ts"
+    "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@hiero-ledger/sdk": "2.85.0",

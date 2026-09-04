@@ -91,6 +91,55 @@ exact `cryptoTransfer` oneof check, HBAR-only transfer structure, both approval 
 fields, numeric IDs, amount policy, both network-version gates, strict HTTP boundaries,
 x402 payment ordering and key separation, HCS-14 known answers, and HCS verdict records.
 
+## Run the narrated testnet flows
+
+Copy `.env.example` to `.env` and fill in the funded Hedera testnet operator and
+both reviewed network versions. The scripts validate all four values before they
+create a client, so a missing value fails immediately by name without submitting a
+network request.
+
+On Windows, run the Make targets from WSL with Node.js and GNU Make installed, or
+from Git Bash after installing GNU Make. PowerShell does not include `make` by
+default. The direct npm commands shown below are equivalent on every supported
+shell.
+
+Run the allowed path first:
+
+```bash
+make demo
+# Equivalent: npm run demo
+```
+
+The command creates fresh owner, agent, guard, and operational keys plus treasury,
+agent, guard, and operational payment accounts; prints the owner-signed mandate; publishes an in-policy schedule; and waits
+for the mirror node to show it unexecuted with only the agent signature. It then
+shows the HTTP 402 challenge and exact HBAR price, pays through the live x402
+facilitator, and sends the paid request to the production guard. The output lists
+the consensus fields evaluated by `reviewSchedule`, then prints the guard signature,
+execution timestamp, exact treasury balance delta, HCS verdict link, and schedule
+and account evidence links.
+
+Then run the refused path:
+
+```bash
+make attack
+# Equivalent: npm run refusal
+```
+
+This command builds the same authorization topology but proposes a transfer to the
+separately keyed operational account, which is outside the mandate allowlist. It
+still pays for the review. The final checks require the mirror schedule to have a
+null `executed_timestamp`, `deleted: false`, the agent's `public_key_prefix`, and no
+guard `public_key_prefix`. The command also proves the treasury balance is unchanged
+and prints the refused HCS verdict evidence link.
+
+Every run creates real testnet accounts and submits real transactions. Neither path
+has a simulated fallback. After the narrated outcome and evidence checks, the scripts
+use each temporary account's key to return its remaining HBAR to the funded operator;
+the operator pays those cleanup transaction fees. Every touched schedule is printed as
+`https://testnet.mirrornode.hedera.com/api/v1/schedules/{id}`; account evidence uses
+the matching `/accounts/{id}` endpoint.
+
 ## Run the Hedera testnet spike
 
 Copy `.env.example` to `.env` and provide a funded testnet operator. Keep `.env` uncommitted.
@@ -99,6 +148,7 @@ On the first credentialed run, leave the two version variables empty:
 
 ```bash
 npm run spike
+# Equivalent: make spike
 ```
 
 The script queries and prints the live HAPI protobuf and services versions before creating accounts. Record those exact values in `.env`, review them against the installed schema, then rerun `npm run spike`.
@@ -119,11 +169,15 @@ The spike creates testnet accounts and submits real testnet transactions. Each p
 ```text
 src/mandate.ts          Mandate parsing, canonicalization, signature verification, digest
 src/review-schedule.ts  Pure fail-closed schedule review
+src/evidence-links.ts   Mirror-node links and independently checkable schedule evidence
 src/replay-store.ts     Durable single-use nonce reservation
 src/payment-gate.ts     Up-front Hedera x402 review payment
 src/hcs14.ts            Deterministic HCS-14 AID generation
 src/verdict-log.ts      Immutable HCS verdict topic and record submission
 src/server.ts           Offline-testable HTTP handler and production adapter composition
+scripts/demo.ts         Allowed narrated testnet flow
+scripts/refusal.ts      Refused narrated testnet flow
+scripts/live-flow.ts    Shared production flow orchestration
 scripts/spike-nested-key.ts
 test/
 var/                    Runtime SQLite data; ignored by git

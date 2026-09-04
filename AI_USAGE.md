@@ -7,7 +7,7 @@ OpenAI Codex (`codex-cli` 0.153.2) authored 100% of the source, tests, and scrip
 - Source: every module under `src/`, including the mandate, replay store, schedule
   validator, x402 gate, HCS-14 identity generator, HCS verdict log, and review server.
 - Tests: every file under `test/`.
-- Script: `scripts/spike-nested-key.ts`.
+- Scripts: the testnet spike and narrated allowed/refused flows under `scripts/`.
 
 ## Anthropic Claude
 

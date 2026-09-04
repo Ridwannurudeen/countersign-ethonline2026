@@ -10,7 +10,10 @@ import {
   mandateDigest,
   type Mandate,
 } from "../src/mandate.ts";
-import type { ReviewableScheduleInfo } from "../src/review-schedule.ts";
+import type {
+  ReviewCheck,
+  ReviewableScheduleInfo,
+} from "../src/review-schedule.ts";
 import {
   MAX_REVIEW_BODY_BYTES,
   createProductionReviewServer,
@@ -333,10 +336,33 @@ test("POST /review retains settlement headers when consensus resolution errors",
 });
 
 test("POST /review records a paid authorization refusal without reserving", async () => {
+  const reviewChecks: ReviewCheck[] = [];
   const state = harness({
     async resolveSchedule() {
       state.events.push("resolve");
-      return resolvedSchedule(schedule({ scheduleMemo: "different" }));
+      return resolvedSchedule(
+        schedule({
+          schedulableTransactionBody: {
+            transactionFee: BigInt("100000000"),
+            memo: digest,
+            cryptoTransfer: {
+              transfers: {
+                accountAmounts: [
+                  adjustment("1001", "-25000000"),
+                  adjustment("1003", "25000000"),
+                ],
+              },
+              tokenTransfers: [],
+            },
+            maxCustomFees: [],
+          },
+        }),
+      );
+    },
+    reviewObserver: {
+      onReviewCheck(check) {
+        reviewChecks.push(check);
+      },
     },
   });
 
@@ -348,7 +374,7 @@ test("POST /review records a paid authorization refusal without reserving", asyn
   assert.equal(response.headers.get("payment-response"), "settled");
   assert.deepEqual(json, {
     outcome: "refused",
-    reason: "schedule memo is not bound to the mandate digest",
+    reason: "recipient is outside the mandate allowlist",
     scheduleId: "0.0.7001",
     mandateDigest: digest,
     settlementId: "0.0.8001@1788509000.000000001",
@@ -356,6 +382,10 @@ test("POST /review records a paid authorization refusal without reserving", asyn
       "https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.9001/messages/4",
   });
   assert.deepEqual(state.events, ["payment", "resolve", "record"]);
+  assert.deepEqual(reviewChecks.at(-1), {
+    invariant: "recipient is on the mandate allowlist",
+    passed: false,
+  });
   assert.deepEqual(state.verdicts, [
     {
       outcome: "refused",
