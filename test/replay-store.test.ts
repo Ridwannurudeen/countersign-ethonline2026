@@ -218,6 +218,33 @@ test("reserveMandateReview refuses the same nonce with a different ScheduleID", 
   );
 });
 
+test("INVARIANT: nonces must be scoped per tenant", () => {
+  const path = databasePath();
+  const firstTenant = reservation();
+  const secondTenant = reservation({
+    tenantId: "treasury-2",
+    mandateDigest: "b".repeat(64),
+    scheduleId: "0.0.7002",
+  });
+
+  assert.deepEqual(reserveMandateReview(path, firstTenant), {
+    status: "reserved",
+  });
+  assert.deepEqual(reserveMandateReview(path, secondTenant), {
+    status: "reserved",
+  });
+  assert.deepEqual(
+    reserveMandateReview(path, {
+      ...firstTenant,
+      mandateDigest: "c".repeat(64),
+    }),
+    {
+      status: "refused",
+      reason: "nonce is already bound to a different mandate digest or ScheduleID",
+    },
+  );
+});
+
 test("reserveMandateReview refuses a nonce below the tenant high-water mark", () => {
   const path = databasePath();
   reserveMandateReview(path, reservation({ nonce: "8" }));

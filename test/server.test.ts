@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, rmSync } from "node:fs";
 import { connect, type AddressInfo } from "node:net";
 import { resolve } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 
 import { proto } from "@hiero-ledger/proto";
@@ -17,7 +18,9 @@ import type {
   ReviewableScheduleInfo,
 } from "../src/review-schedule.ts";
 import {
+  initializeReplayStore,
   ReplayStoreContentionError,
+  reserveMandateReview,
   type CompletedMandateReview,
 } from "../src/replay-store.ts";
 import {
@@ -31,7 +34,8 @@ import {
 import type { VerdictRecord } from "../src/verdict-log.ts";
 
 const ownerKey = PrivateKey.generateED25519();
-const agentKey = PrivateKey.generateED25519().publicKey;
+const agentPrivateKey = PrivateKey.generateED25519();
+const agentKey = agentPrivateKey.publicKey;
 const guardKey = PrivateKey.generateED25519().publicKey;
 const operationalKey = PrivateKey.generateED25519().publicKey;
 const treasuryKey = new KeyList(
@@ -152,6 +156,7 @@ function harness(
   const verdicts: VerdictRecord[] = [];
   const completions: CompletedMandateReview[] = [];
   const dependencies: ReviewServerDependencies = {
+    tenantId: mandate.tenantId,
     ownerPublicKey: ownerKey.publicKey,
     paymentGate: {
       async review() {
@@ -252,6 +257,23 @@ test("POST /review rejects a tenant binding mismatch before payment", async () =
 
   assert.equal(response.status, 400);
   assert.match(String(json.error), /tenantId/);
+  assert.deepEqual(state.events, []);
+});
+
+test("INVARIANT: a mandate issued for one tenant must never authorize a schedule bound to another tenant", async () => {
+  const state = harness();
+  const outOfPolicyMandate = {
+    ...mandate,
+    tenantId: "treasury-2",
+  };
+  const { response, json } = await postReview(state.dependencies, {
+    tenantId: outOfPolicyMandate.tenantId,
+    mandateEnvelope: signedMandateEnvelope(outOfPolicyMandate),
+    scheduleId: "0.0.7001",
+  });
+
+  assert.equal(response.status, 403);
+  assert.match(String(json.error), /configured tenant/);
   assert.deepEqual(state.events, []);
 });
 
@@ -623,6 +645,7 @@ test("POST /review completes the approved orchestration in order", async () => {
 });
 
 const productionConfig: ProductionReviewServerConfig = {
+  tenantId: mandate.tenantId,
   ownerPublicKey: ownerKey.publicKey,
   agentPublicKey: agentKey,
   guardPublicKey: guardKey,
@@ -662,6 +685,60 @@ const productionConfig: ProductionReviewServerConfig = {
     },
   },
 };
+
+test("INVARIANT: tenant owner and agent private key material must never enter server configuration or persisted state", () => {
+  const databaseDirectory = resolve("var");
+  mkdirSync(databaseDirectory, { recursive: true });
+  const databasePath = resolve(
+    databaseDirectory,
+    `server-key-material-${process.pid}-${Date.now()}.sqlite`,
+  );
+  const config: ProductionReviewServerConfig = {
+    ...productionConfig,
+    replayDatabasePath: databasePath,
+  };
+
+  try {
+    initializeReplayStore(databasePath);
+    reserveMandateReview(databasePath, {
+      tenantId: mandate.tenantId,
+      nonce: mandate.nonce,
+      mandateDigest: digest,
+      scheduleId: "0.0.7001",
+    });
+
+    const database = new DatabaseSync(databasePath, { readOnly: true });
+    try {
+      const columns = database
+        .prepare("SELECT name FROM pragma_table_info('mandate_reviews')")
+        .all()
+        .map((row) => String(row.name));
+      const rows = database.prepare("SELECT * FROM mandate_reviews").all();
+      const serializedConfig = JSON.stringify(config);
+      const serializedRows = JSON.stringify(rows);
+
+      assert.deepEqual(
+        Object.keys(config).filter((field) => /private/i.test(field)),
+        [],
+      );
+      assert.equal(config.ownerPublicKey instanceof PrivateKey, false);
+      assert.equal(config.agentPublicKey instanceof PrivateKey, false);
+      assert.deepEqual(
+        columns.filter((column) => /(owner|agent|private).*key/i.test(column)),
+        [],
+      );
+      for (const privateKey of [ownerKey, agentPrivateKey]) {
+        const privateMaterial = privateKey.toStringDer();
+        assert.equal(serializedConfig.includes(privateMaterial), false);
+        assert.equal(serializedRows.includes(privateMaterial), false);
+      }
+    } finally {
+      database.close();
+    }
+  } finally {
+    rmSync(databasePath, { force: true });
+  }
+});
 
 function configuredClient(operatorKey = guardKey): Client {
   return Client.forTestnet().setOperatorWith(

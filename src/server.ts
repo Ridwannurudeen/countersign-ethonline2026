@@ -83,6 +83,7 @@ type ReviewResponseBody = ReviewResponseOutcome & {
 };
 
 export interface ReviewServerDependencies {
+  tenantId: string;
   ownerPublicKey: PublicKey;
   paymentGate: PaymentGate;
   lookupCompletedReview(
@@ -111,6 +112,7 @@ export interface ReviewObserver {
 }
 
 export interface ProductionReviewServerConfig {
+  tenantId: string;
   ownerPublicKey: PublicKey;
   agentPublicKey: PublicKey;
   guardPublicKey: PublicKey;
@@ -375,6 +377,12 @@ async function handleReviewRequest(
   }
 
   const parsedRequest = parseReviewRequest(await readJsonBody(incoming));
+  if (parsedRequest.tenantId !== dependencies.tenantId) {
+    throw new RequestError(
+      403,
+      "mandate tenant does not match the configured tenant",
+    );
+  }
   if (
     !verifyMandateSignature(
       parsedRequest.mandateEnvelope,
@@ -807,6 +815,7 @@ export async function createProductionReviewServer(
   );
 
   return createReviewServer({
+    tenantId: config.tenantId,
     ownerPublicKey: config.ownerPublicKey,
     paymentGate,
     lookupCompletedReview(reservation) {

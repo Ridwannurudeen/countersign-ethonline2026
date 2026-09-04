@@ -585,6 +585,7 @@ export async function runLiveFlow(outcome: LiveFlowOutcome): Promise<void> {
 
     mkdirSync(resolve("var"), { recursive: true });
     server = await createProductionReviewServer(guardClient, {
+      tenantId: envelope.mandate.tenantId,
       ownerPublicKey: ownerPrivateKey.publicKey,
       agentPublicKey: agentPrivateKey.publicKey,
       guardPublicKey: guardPrivateKey.publicKey,
