@@ -2,19 +2,20 @@
   "name": "countersign",
   "version": "0.1.0",
   "private": true,
-  "description": "An AI can propose any transaction. It cannot execute one until an independent guard signs the exact bytes.",
+  "description": "Countersign validates consensus-resolved HBAR schedules against owner-signed mandates before adding the guard key.",
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=24.15.0"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --test --experimental-strip-types test/**/*.test.ts",
-    "spike": "node --experimental-strip-types scripts/spike-nested-key.ts"
+    "spike": "node --env-file-if-exists=.env --experimental-strip-types scripts/spike-nested-key.ts"
   },
   "dependencies": {
-    "@hiero-ledger/sdk": "2.87.0"
+    "@hiero-ledger/sdk": "2.87.0",
+    "json-canonicalize": "3.0.0"
   },
   "devDependencies": {
     "@types/node": "24.7.0",
