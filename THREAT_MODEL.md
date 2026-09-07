@@ -97,6 +97,10 @@ Inputs that are never trusted on their own:
 - SQLite contention waits up to 100 milliseconds and then returns retryable HTTP 503.
   This bounds lock waiting but does not provide high availability across a database or
   filesystem outage.
-- The required `@hiero-ledger/sdk@2.85.0` alignment currently resolves transitive
-  packages in published high-severity advisory ranges. This build must not be deployed
-  until a compatible dependency set or verified override resolves those advisories.
+- The required direct pins remain `@hiero-ledger/sdk@2.85.0`, `@x402/core@2.25.0`, and
+  `@x402/hedera@2.25.0`. Exact-version overrides select `@grpc/grpc-js@1.12.7`,
+  `protobufjs@8.6.6` for both the SDK and proto runtime, and `ws@8.21.3` under
+  `ethers`; the first two match the dependency versions published by SDK 2.87.0.
+  Production must install with `npm ci --omit=dev --omit=peer` so the unused React Native
+  peer tree is not present, and `npm audit --omit=dev --omit=peer` must remain clean.
+  Any override change requires the full invariant suite and network-version review again.

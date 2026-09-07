@@ -90,6 +90,7 @@ Expected milestones from the complete spike include:
 
 ```text
 Treasury key tree verified for <treasury-account-id>
+Agent-only direct transfer rejected with INVALID_SIGNATURE
 Approved schedule executed: <schedule-id>
 Refused schedule remained unexecuted: <schedule-id>
 Owner-only recovery branch executed successfully
@@ -285,4 +286,3 @@ Check the raw response, not only the script summary:
   reported versions before changing the allowlist. The guard is designed to fail closed.
 - **`make` is unavailable:** PowerShell does not include GNU Make by default. Use
   `npm run demo`, `npm run refusal`, `npm test`, `npm run typecheck`, and `npm run spike`.
-

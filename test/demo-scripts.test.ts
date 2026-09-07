@@ -125,3 +125,38 @@ test("nested-key spike recovers every created account from finally", () => {
     /if \(primaryFailure !== null\) \{\s*throw primaryFailure\.error;/,
   );
 });
+
+test("nested-key spike proves agent-only direct transfer rejection before scheduling", () => {
+  const source = readFileSync(
+    resolve("scripts", "spike-nested-key.ts"),
+    "utf8",
+  );
+
+  assert.match(
+    source,
+    /new TransferTransaction\(\)[\s\S]*?addHbarTransfer\(treasuryAccountId, [^)]+\.negated\(\)\)[\s\S]*?addHbarTransfer\(operatorAccountId, [^)]+\)[\s\S]*?freezeWith\(agentClient\)/,
+  );
+  assert.match(source, /await agentOnlyDirectTransfer\.sign\(agentPrivateKey\)/);
+  assert.match(
+    source,
+    /await agentOnlyDirectTransfer\.execute\(agentClient\)[\s\S]*?await [^)]+\.getReceipt\(agentClient\)/,
+  );
+  assert.match(
+    source,
+    /error instanceof ReceiptStatusError[\s\S]*?error\.status === Status\.InvalidSignature/,
+  );
+  assert.match(
+    source,
+    /throw new Error\("agent-only direct transfer unexpectedly executed"\)/,
+  );
+
+  const keyTreeVerified = source.indexOf("Treasury key tree verified");
+  const directTransferAttempt = source.indexOf(
+    "const agentOnlyDirectTransfer = new TransferTransaction()",
+  );
+  const scheduledPath = source.indexOf(
+    "const approvedScheduleId = await createHbarSchedule",
+  );
+  assert.ok(keyTreeVerified < directTransferAttempt);
+  assert.ok(directTransferAttempt < scheduledPath);
+});

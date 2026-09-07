@@ -9,10 +9,12 @@ import {
   NetworkVersionInfoQuery,
   PrivateKey,
   PublicKey,
+  ReceiptStatusError,
   ScheduleCreateTransaction,
   ScheduleId,
   ScheduleInfoQuery,
   ScheduleSignTransaction,
+  Status,
   Timestamp,
   TransferTransaction,
   type Key,
@@ -292,6 +294,35 @@ async function main(): Promise<void> {
       throw new Error("stored nested key branch does not contain the agent and guard keys");
     }
     console.log(`Treasury key tree verified for ${treasuryAccountId.toString()}`);
+
+    const directTransferAmount = Hbar.fromTinybars(APPROVED_TRANSFER_TINYBARS);
+    const agentOnlyDirectTransfer = new TransferTransaction()
+      .addHbarTransfer(treasuryAccountId, directTransferAmount.negated())
+      .addHbarTransfer(operatorAccountId, directTransferAmount)
+      .setMaxTransactionFee(Hbar.fromTinybars(PROTOCOL_MAX_FEE_TINYBARS))
+      .freezeWith(agentClient);
+    await agentOnlyDirectTransfer.sign(agentPrivateKey);
+    let agentOnlyDirectTransferRejected = false;
+    try {
+      const directTransferResponse = await agentOnlyDirectTransfer.execute(agentClient);
+      await directTransferResponse.getReceipt(agentClient);
+    } catch (error) {
+      if (
+        error instanceof ReceiptStatusError &&
+        error.status === Status.InvalidSignature
+      ) {
+        agentOnlyDirectTransferRejected = true;
+      } else {
+        throw new Error(
+          "agent-only direct transfer failed for an unexpected reason",
+          { cause: error },
+        );
+      }
+    }
+    if (!agentOnlyDirectTransferRejected) {
+      throw new Error("agent-only direct transfer unexpectedly executed");
+    }
+    console.log("Agent-only direct transfer rejected with INVALID_SIGNATURE");
 
     const nowEpochSeconds = Math.floor(Date.now() / 1000);
     const unparsedMandate: Mandate = {

@@ -92,9 +92,18 @@ contention is bounded and returns retryable HTTP 503.
 ## Run the offline proof
 
 ```bash
-npm install
+npm ci --omit=peer
 npm run typecheck
 npm test
+```
+
+The lockfile keeps the required direct SDK and x402 pins plus reviewed transitive security
+overrides. Omitting peer packages keeps the React Native peer tree out of this Node.js
+service. A production install and audit use:
+
+```bash
+npm ci --omit=dev --omit=peer
+npm audit --omit=dev --omit=peer
 ```
 
 The test suite uses no network access. It covers mandate parsing and signatures, replay
