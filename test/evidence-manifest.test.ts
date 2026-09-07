@@ -11,6 +11,7 @@ import {
 
 const review: ReviewEvidenceInput = {
   kind: "review",
+  guardPublicKeyPrefix: "ab12",
   origin: "external",
   scheduleId: "0.0.7001",
   outcome: "approved",
@@ -32,13 +33,13 @@ test("INVARIANT: a record without an explicit origin must be refused", () => {
   const { origin: _origin, ...withoutOrigin } = review;
 
   assert.throws(
-    () => buildEvidenceManifest("ab12", [withoutOrigin as unknown as EvidenceEvent]),
+    () => buildEvidenceManifest([withoutOrigin as unknown as EvidenceEvent]),
     /origin must be operator or external/,
   );
 });
 
 test("INVARIANT: operator and external counts must never be summed into one field", () => {
-  const manifest = buildEvidenceManifest("ab12", [
+  const manifest = buildEvidenceManifest([
     review,
     { ...review, scheduleId: "0.0.7002", outcome: "refused" },
     {
@@ -69,7 +70,7 @@ test("INVARIANT: operator and external counts must never be summed into one fiel
 });
 
 test("a setup transaction is not counted as a review", () => {
-  const manifest = buildEvidenceManifest("", [
+  const manifest = buildEvidenceManifest([
     {
       kind: "setup",
       origin: "operator",
@@ -85,7 +86,7 @@ test("a setup transaction is not counted as a review", () => {
 });
 
 test("the empty manifest validates and exposes only separated zero counts", () => {
-  const manifest = buildEvidenceManifest("", []);
+  const manifest = buildEvidenceManifest([]);
 
   assert.deepEqual(parseEvidenceManifest(manifest), manifest);
   assert.deepEqual(manifest.counts, {
@@ -104,20 +105,20 @@ test("the empty manifest validates and exposes only separated zero counts", () =
 });
 
 test("manifest validation rejects a non-string guard public-key prefix", () => {
-  const manifest = buildEvidenceManifest("", []);
+  const manifest = buildEvidenceManifest([review]);
 
   assert.throws(
     () =>
       parseEvidenceManifest({
         ...manifest,
-        guardPublicKeyPrefix: 12,
+        records: [{ ...manifest.records[0], guardPublicKeyPrefix: 12 }],
       }),
-    /guardPublicKeyPrefix must be a string/,
+    /guardPublicKeyPrefix must be a non-empty string/,
   );
 });
 
 test("manifest validation does not depend on count-field property order", () => {
-  const manifest = buildEvidenceManifest("", []);
+  const manifest = buildEvidenceManifest([]);
 
   assert.deepEqual(
     parseEvidenceManifest({
@@ -150,16 +151,16 @@ test("the produced JSON satisfies the evidence page contract", async () => {
       await readFile(new URL("../web/evidence.json", import.meta.url), "utf8"),
     ),
   );
-  const produced = buildEvidenceManifest("", []);
+  const produced = buildEvidenceManifest([]);
 
   assert.deepEqual(checkedIn, produced);
   assert.match(pageSource, /data\.records/);
-  assert.match(pageSource, /data\.guardPublicKeyPrefix/);
+  assert.match(pageSource, /record\.guardPublicKeyPrefix/);
   assert.match(pageSource, /No reviews recorded yet\./);
 });
 
 test("review records carry canonical schedule and payer mirror links", () => {
-  const [record] = buildEvidenceManifest("ab12", [review]).records;
+  const [record] = buildEvidenceManifest([review]).records;
 
   assert.equal(
     record?.mirrorNodeUrl,
@@ -168,5 +169,39 @@ test("review records carry canonical schedule and payer mirror links", () => {
   assert.equal(
     record?.paymentPayerMirrorNodeUrl,
     "https://testnet.mirrornode.hedera.com/api/v1/accounts/0.0.8001",
+  );
+});
+
+test("INVARIANT: combined reviews must preserve each record's guard identity", () => {
+  const events = [
+    { ...review, guardPublicKeyPrefix: "ab12" },
+    { ...review, scheduleId: "0.0.7002", guardPublicKeyPrefix: "cd34" },
+  ];
+  const manifest = buildEvidenceManifest(events);
+  assert.deepEqual(
+    manifest.records.map((record) => record.guardPublicKeyPrefix),
+    ["ab12", "cd34"],
+  );
+  assert.deepEqual(parseEvidenceManifest(manifest), manifest);
+  assert.equal("guardPublicKeyPrefix" in manifest, false);
+});
+
+for (const guardPublicKeyPrefix of ["", "abc", "not-hex", 12]) {
+  test(`INVARIANT: review guard identity ${String(guardPublicKeyPrefix)} must be refused`, () => {
+    assert.throws(
+      () => buildEvidenceManifest([
+        { ...review, guardPublicKeyPrefix } as unknown as ReviewEvidenceInput,
+      ]),
+      /guardPublicKeyPrefix must be/,
+    );
+  });
+}
+
+test("INVARIANT: a review without a guard identity cannot be interpreted using a global identity", () => {
+  const { guardPublicKeyPrefix, ...withoutGuard } = review;
+  assert.equal(guardPublicKeyPrefix, "ab12");
+  assert.throws(
+    () => buildEvidenceManifest([withoutGuard as ReviewEvidenceInput]),
+    /missing review record field: guardPublicKeyPrefix/,
   );
 });

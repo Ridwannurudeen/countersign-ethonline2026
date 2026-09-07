@@ -15,6 +15,7 @@ export interface EvidenceMandatePolicy {
 
 export interface ReviewEvidenceInput {
   readonly kind: "review";
+  readonly guardPublicKeyPrefix: string;
   readonly origin: EvidenceOrigin;
   readonly scheduleId: string;
   readonly outcome: ReviewEvidenceOutcome;
@@ -56,7 +57,6 @@ export interface EvidenceCounts {
 
 export interface EvidenceManifest {
   readonly schemaVersion: "1";
-  readonly guardPublicKeyPrefix: string;
   readonly records: readonly ReviewEvidenceRecord[];
   readonly setupTransactions: readonly SetupEvidenceInput[];
   readonly counts: EvidenceCounts;
@@ -200,6 +200,7 @@ function parseReviewInput(value: unknown): ReviewEvidenceInput {
     record,
     [
       "kind",
+      "guardPublicKeyPrefix",
       "origin",
       "scheduleId",
       "outcome",
@@ -218,6 +219,13 @@ function parseReviewInput(value: unknown): ReviewEvidenceInput {
   if (record.outcome !== "approved" && record.outcome !== "refused") {
     throw new Error("review outcome must be approved or refused");
   }
+  const guardPublicKeyPrefix = requireString(
+    record.guardPublicKeyPrefix,
+    "guardPublicKeyPrefix",
+  );
+  if (!publicKeyPrefixPattern.test(guardPublicKeyPrefix)) {
+    throw new Error("guardPublicKeyPrefix must be lowercase hexadecimal");
+  }
   const mandateDigest = requireString(record.mandateDigest, "mandateDigest");
   if (!digestPattern.test(mandateDigest)) {
     throw new Error("mandateDigest must be 64 lowercase hexadecimal characters");
@@ -233,6 +241,7 @@ function parseReviewInput(value: unknown): ReviewEvidenceInput {
   }
   return {
     kind: "review",
+    guardPublicKeyPrefix,
     origin,
     scheduleId: requireEntityId(record.scheduleId, "scheduleId"),
     outcome: record.outcome,
@@ -372,7 +381,6 @@ function separatedCounts(records: readonly ReviewEvidenceRecord[]): EvidenceCoun
 }
 
 export function buildEvidenceManifest(
-  guardPublicKeyPrefix: string,
   events: readonly EvidenceEvent[],
 ): EvidenceManifest {
   const records: ReviewEvidenceRecord[] = [];
@@ -391,18 +399,8 @@ export function buildEvidenceManifest(
       setupTransactions.push(parseSetupInput(event));
     }
   }
-  if (
-    guardPublicKeyPrefix !== "" &&
-    !publicKeyPrefixPattern.test(guardPublicKeyPrefix)
-  ) {
-    throw new Error("guardPublicKeyPrefix must be lowercase hexadecimal");
-  }
-  if (records.length > 0 && guardPublicKeyPrefix === "") {
-    throw new Error("guardPublicKeyPrefix is required when reviews are present");
-  }
   return {
     schemaVersion: "1",
-    guardPublicKeyPrefix,
     records,
     setupTransactions,
     counts: separatedCounts(records),
@@ -415,7 +413,6 @@ export function parseEvidenceManifest(value: unknown): EvidenceManifest {
     manifest,
     [
       "schemaVersion",
-      "guardPublicKeyPrefix",
       "records",
       "setupTransactions",
       "counts",
@@ -431,15 +428,13 @@ export function parseEvidenceManifest(value: unknown): EvidenceManifest {
   if (!Array.isArray(manifest.setupTransactions)) {
     throw new TypeError("evidence manifest setupTransactions must be an array");
   }
-  if (typeof manifest.guardPublicKeyPrefix !== "string") {
-    throw new TypeError("guardPublicKeyPrefix must be a string");
-  }
   const reviewInputs = manifest.records.map((value) => {
     const record = requireRecord(value, "review record");
     requireExactFields(
       record,
       [
         "kind",
+        "guardPublicKeyPrefix",
         "origin",
         "scheduleId",
         "outcome",
@@ -473,10 +468,7 @@ export function parseEvidenceManifest(value: unknown): EvidenceManifest {
   });
   const setupInputs = manifest.setupTransactions.map(parseSetupInput);
   const suppliedCounts = parseCounts(manifest.counts);
-  const rebuilt = buildEvidenceManifest(
-    manifest.guardPublicKeyPrefix,
-    [...reviewInputs, ...setupInputs],
-  );
+  const rebuilt = buildEvidenceManifest([...reviewInputs, ...setupInputs]);
   if (JSON.stringify(suppliedCounts) !== JSON.stringify(rebuilt.counts)) {
     throw new Error("evidence manifest counts do not match its separated records");
   }

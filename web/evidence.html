@@ -317,16 +317,21 @@
           throw new TypeError("mirrorNodeUrl must be a non-empty string");
         }
 
-        const url = new URL(value);
-        const pathParts = url.pathname.split("/").filter(Boolean);
         if (
-          url.protocol !== "https:" ||
-          url.hostname !== "testnet.mirrornode.hedera.com" ||
-          pathParts.join("/") !== `api/v1/schedules/${scheduleId}`
+          value !== `https://testnet.mirrornode.hedera.com/api/v1/schedules/${scheduleId}`
         ) {
-          throw new Error("mirrorNodeUrl must be the schedule's testnet mirror-node URL");
+          throw new Error(
+            "mirrorNodeUrl must be the schedule's exact testnet mirror-node URL",
+          );
         }
-        return url.href;
+        return value;
+      }
+
+      function requireHex(value, field) {
+        if (typeof value !== "string" || !/^(?:[0-9a-fA-F]{2})+$/.test(value)) {
+          throw new TypeError(`${field} must be non-empty hexadecimal`);
+        }
+        return value.toLowerCase();
       }
 
       function parseRecord(value, index) {
@@ -343,7 +348,20 @@
           throw new Error(`records[${index}].scheduleId must be a numeric Hedera ID`);
         }
 
+        if (
+          typeof record.mandateDigest !== "string" ||
+          !/^[0-9a-f]{64}$/.test(record.mandateDigest)
+        ) {
+          throw new Error(
+            "mandateDigest must be 64 lowercase hexadecimal characters",
+          );
+        }
         return {
+          guardPublicKeyPrefix: requireHex(
+            record.guardPublicKeyPrefix,
+            "guardPublicKeyPrefix",
+          ),
+          mandateDigest: record.mandateDigest,
           origin: record.origin,
           scheduleId: record.scheduleId,
           mirrorNodeUrl: requireMirrorUrl(record.mirrorNodeUrl, record.scheduleId),
@@ -355,29 +373,24 @@
         if (!Array.isArray(data.records)) {
           throw new TypeError("evidence.json records must be an array");
         }
-        if (typeof data.guardPublicKeyPrefix !== "string") {
-          throw new TypeError("guardPublicKeyPrefix must be a string");
-        }
-        if (
-          data.records.length > 0 &&
-          !/^(?:[0-9a-fA-F]{2})+$/.test(data.guardPublicKeyPrefix)
-        ) {
-          throw new Error("guardPublicKeyPrefix must be non-empty hexadecimal");
-        }
-
         return {
-          guardPublicKeyPrefix: data.guardPublicKeyPrefix.toLowerCase(),
           records: data.records.map(parseRecord),
         };
       }
 
-      function parseMirrorSchedule(value) {
+      function parseMirrorSchedule(value, record) {
         const schedule = requireRecord(value, "mirror schedule response");
         if (
           schedule.executed_timestamp !== null &&
-          typeof schedule.executed_timestamp !== "string"
+          (typeof schedule.executed_timestamp !== "string" ||
+            !/^(0|[1-9][0-9]*)\.[0-9]{9}$/.test(schedule.executed_timestamp))
         ) {
-          throw new TypeError("executed_timestamp must be a string or null");
+          throw new TypeError(
+            "executed_timestamp must be a consensus timestamp or null",
+          );
+        }
+        if (schedule.memo !== record.mandateDigest) {
+          throw new Error("mirror schedule memo does not match mandateDigest");
         }
         if (typeof schedule.deleted !== "boolean") {
           throw new TypeError("deleted must be a boolean");
@@ -414,7 +427,7 @@
         list.append(dt, dd);
       }
 
-      async function renderRecord(record, guardPublicKeyPrefix) {
+      async function renderRecord(record) {
         const item = document.createElement("li");
         const article = document.createElement("article");
         const heading = document.createElement("div");
@@ -444,9 +457,9 @@
             throw new Error(`Mirror node returned HTTP ${response.status}.`);
           }
 
-          const schedule = parseMirrorSchedule(await response.json());
+          const schedule = parseMirrorSchedule(await response.json(), record);
           const guardSigned = schedule.signerPrefixes.includes(
-            guardPublicKeyPrefix,
+            record.guardPublicKeyPrefix,
           );
           const executed = schedule.executedTimestamp !== null;
           addFact(
@@ -476,7 +489,7 @@
         } catch (error) {
           const failure = document.createElement("p");
           failure.className = "failure";
-          failure.textContent = `Could not verify this schedule. ${
+          failure.textContent = `Could not verify. ${
             error instanceof Error ? error.message : "The mirror-node request failed."
           }`;
           article.append(failure);
@@ -485,7 +498,7 @@
         return item;
       }
 
-      async function renderGroup(section, list, count, records, copy, guardPrefix) {
+      async function renderGroup(section, list, count, records, copy) {
         if (records.length === 0) {
           return;
         }
@@ -495,7 +508,7 @@
         }`;
         section.hidden = false;
         for (const record of records) {
-          list.append(await renderRecord(record, guardPrefix));
+          list.append(await renderRecord(record));
         }
       }
 
@@ -528,7 +541,6 @@
             elements.externalCount,
             externalRecords,
             originCopy.external,
-            data.guardPublicKeyPrefix,
           );
           await renderGroup(
             elements.operatorSection,
@@ -536,10 +548,9 @@
             elements.operatorCount,
             operatorRecords,
             originCopy.operator,
-            data.guardPublicKeyPrefix,
           );
         } catch (error) {
-          elements.pageStatus.textContent = `Could not load checked-in evidence records. ${
+          elements.pageStatus.textContent = `Could not verify. Could not load checked-in evidence records. ${
             error instanceof Error ? error.message : "The request failed."
           } No schedule claim was verified.`;
         }

@@ -555,13 +555,28 @@
         return value;
       }
 
+      function requireMirrorUrl(value, scheduleId) {
+        if (
+          value !== `https://testnet.mirrornode.hedera.com/api/v1/schedules/${scheduleId}`
+        ) {
+          throw new Error(
+            "mirrorNodeUrl must be the schedule's exact testnet mirror-node URL",
+          );
+        }
+        return value;
+      }
+
+      function requireHex(value, field) {
+        if (typeof value !== "string" || !/^(?:[0-9a-fA-F]{2})+$/.test(value)) {
+          throw new TypeError(`${field} must be non-empty hexadecimal`);
+        }
+        return value.toLowerCase();
+      }
+
       function parseManifest(value) {
         const manifest = requireRecord(value, "evidence manifest");
         if (!Array.isArray(manifest.records)) {
           throw new TypeError("evidence manifest records must be an array");
-        }
-        if (typeof manifest.guardPublicKeyPrefix !== "string") {
-          throw new TypeError("guardPublicKeyPrefix must be a string");
         }
         const records = manifest.records.map((value, index) => {
           const record = requireRecord(value, `records[${index}]`);
@@ -570,6 +585,20 @@
           }
           if (record.outcome !== "approved" && record.outcome !== "refused") {
             throw new Error(`records[${index}].outcome is invalid`);
+          }
+          if (
+            typeof record.scheduleId !== "string" ||
+            !/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/.test(record.scheduleId)
+          ) {
+            throw new Error(`records[${index}].scheduleId must be a numeric Hedera ID`);
+          }
+          if (
+            typeof record.mandateDigest !== "string" ||
+            !/^[0-9a-f]{64}$/.test(record.mandateDigest)
+          ) {
+            throw new Error(
+              "mandateDigest must be 64 lowercase hexadecimal characters",
+            );
           }
           const policy = requireRecord(
             record.mandatePolicy,
@@ -585,10 +614,14 @@
             );
           }
           return {
+            guardPublicKeyPrefix: requireHex(
+            record.guardPublicKeyPrefix,
+            "guardPublicKeyPrefix",
+          ),
             origin: record.origin,
             outcome: record.outcome,
             scheduleId: requireString(record.scheduleId, "scheduleId"),
-            mirrorNodeUrl: requireString(record.mirrorNodeUrl, "mirrorNodeUrl"),
+            mirrorNodeUrl: requireMirrorUrl(record.mirrorNodeUrl, record.scheduleId),
             decidingInvariant: requireString(
               record.decidingInvariant,
               "decidingInvariant",
@@ -629,25 +662,27 @@
             ),
           };
         });
-        if (records.length > 0 && manifest.guardPublicKeyPrefix.length === 0) {
-          throw new Error("guardPublicKeyPrefix is required for replay records");
-        }
         return {
-          guardPublicKeyPrefix: manifest.guardPublicKeyPrefix.toLowerCase(),
           records,
         };
       }
 
-      function parseMirrorSchedule(value) {
+      function parseMirrorSchedule(value, record) {
         const schedule = requireRecord(value, "mirror schedule response");
         if (!Array.isArray(schedule.signatures)) {
           throw new TypeError("mirror schedule signatures must be an array");
         }
         if (
           schedule.executed_timestamp !== null &&
-          typeof schedule.executed_timestamp !== "string"
+          (typeof schedule.executed_timestamp !== "string" ||
+            !/^(0|[1-9][0-9]*)\.[0-9]{9}$/.test(schedule.executed_timestamp))
         ) {
-          throw new TypeError("executed_timestamp must be a string or null");
+          throw new TypeError(
+            "executed_timestamp must be a consensus timestamp or null",
+          );
+        }
+        if (schedule.memo !== record.mandateDigest) {
+          throw new Error("mirror schedule memo does not match mandateDigest");
         }
         if (typeof schedule.deleted !== "boolean") {
           throw new TypeError("deleted must be a boolean");
@@ -664,10 +699,10 @@
           executedTimestamp: schedule.executed_timestamp,
           deleted: schedule.deleted,
           signaturePrefixes: schedule.signatures.map((value, index) =>
-            requireString(
+            requireHex(
               requireRecord(value, `signatures[${index}]`).public_key_prefix,
               `signatures[${index}].public_key_prefix`,
-            ).toLowerCase(),
+            ),
           ),
         };
       }
@@ -685,7 +720,7 @@
         return list;
       }
 
-      function addStep(number, title, sourceName, state, facts = [], stopped = false) {
+      function addStep(number, title, sourceName, state, facts = []) {
         const item = document.createElement("li");
         const marker = document.createElement("span");
         const card = document.createElement("article");
@@ -695,7 +730,7 @@
         const description = document.createElement("p");
 
         item.className = "step";
-        item.dataset.stopped = String(stopped);
+        item.dataset.stopped = "false";
         marker.className = "step-number";
         marker.textContent = String(number).padStart(2, "0");
         card.className = "step-card";
@@ -767,39 +802,18 @@
           ["Deciding invariant", record.decidingInvariant],
         ]);
 
-        let signatureStep;
-        let executionStep;
-        if (record.outcome === "refused") {
-          signatureStep = addStep(
-            5,
-            "ScheduleSign",
-            "live",
-            "Never happened — awaiting live verification",
-            [],
-            true,
-          );
-          executionStep = addStep(
-            6,
-            "Execution",
-            "live",
-            "Never happened — awaiting live verification",
-            [],
-            true,
-          );
-        } else {
-          signatureStep = addStep(
-            5,
-            "ScheduleSign",
-            "live",
-            "Awaiting guard-prefix verification",
-          );
-          executionStep = addStep(
-            6,
-            "Execution",
-            "live",
-            "Awaiting executed_timestamp verification",
-          );
-        }
+        const signatureStep = addStep(
+          5,
+          "ScheduleSign",
+          "live",
+          "Awaiting live verification",
+        );
+        const executionStep = addStep(
+          6,
+          "Execution",
+          "live",
+          "Awaiting live verification",
+        );
 
         verifyLiveSchedule(
           record,
@@ -822,12 +836,16 @@
           if (!response.ok) {
             throw new Error(`mirror node returned HTTP ${response.status}`);
           }
-          const schedule = parseMirrorSchedule(await response.json());
+          const schedule = parseMirrorSchedule(await response.json(), record);
           scheduleStep.description.textContent = schedule.deleted
             ? "Verified live, but the schedule is deleted"
             : `Verified live · creator ${schedule.creatorAccountId} · payer ${schedule.payerAccountId}`;
           const guardSigned = schedule.signaturePrefixes.includes(
-            currentManifest.guardPublicKeyPrefix,
+            record.guardPublicKeyPrefix,
+          );
+          signatureStep.item.dataset.stopped = String(!guardSigned);
+          executionStep.item.dataset.stopped = String(
+            schedule.executedTimestamp === null,
           );
           if (record.outcome === "refused") {
             signatureStep.description.textContent = guardSigned
@@ -850,7 +868,7 @@
           const detail =
             error instanceof Error ? error.message : "mirror-node request failed";
           for (const step of [scheduleStep, signatureStep, executionStep]) {
-            step.description.textContent = `Could not verify — ${detail}`;
+            step.description.textContent = `Could not verify. ${detail}`;
           }
         }
       }
@@ -899,7 +917,7 @@
           elements.replay.hidden = false;
           selectRecord(new URLSearchParams(window.location.search).get("scheduleId"));
         } catch (error) {
-          elements.loadState.textContent = `Could not load review records. ${
+          elements.loadState.textContent = `Could not verify. Could not load review records. ${
             error instanceof Error ? error.message : "The request failed."
           } No replay claim was verified.`;
         }

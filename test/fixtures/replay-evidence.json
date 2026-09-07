@@ -1,6 +1,5 @@
 {
   "schemaVersion": "1",
-  "guardPublicKeyPrefix": "bbbbbbbbbbbbbbbb",
   "records": [
     {
       "kind": "review",
@@ -20,7 +19,8 @@
       "settlementAmountTinybars": "1000000",
       "paymentPayerAccountId": "0.0.8001",
       "mirrorNodeUrl": "https://testnet.mirrornode.hedera.com/api/v1/schedules/0.0.7001",
-      "paymentPayerMirrorNodeUrl": "https://testnet.mirrornode.hedera.com/api/v1/accounts/0.0.8001"
+      "paymentPayerMirrorNodeUrl": "https://testnet.mirrornode.hedera.com/api/v1/accounts/0.0.8001",
+      "guardPublicKeyPrefix": "bbbbbbbbbbbbbbbb"
     }
   ],
   "setupTransactions": [],
