@@ -118,5 +118,5 @@ of these controls has been exercised against the live network.
 - HTS transfer structure is validated, but approval remains disabled. Token custom-fee
   state is outside the current schedule-resolution context and every otherwise valid HTS
   transfer is refused until empty, immutable fees can be verified from consensus.
-- These invariants have 271 passing offline Node tests, but none has been exercised against
+- These invariants are covered by the offline Node test suite, but none has been exercised against
   the live Hedera network. The repository has no Hedera credentials.

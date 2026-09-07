@@ -12,6 +12,7 @@ import { x402Client } from "@x402/core/client";
 import type { FacilitatorClient } from "@x402/core/server";
 import {
   decodePaymentRequiredHeader,
+  decodePaymentSignatureHeader,
   encodePaymentSignatureHeader,
   x402HTTPClient,
 } from "@x402/core/http";
@@ -166,15 +167,19 @@ async function createTokenPaymentSignatureHeader(
   const requirements = await paymentRequirements(facilitator);
   const transaction = await new TransferTransaction()
     .addTokenTransfer("0.0.7001", senderAccountId, -1n)
-    .addTokenTransfer(
-      "0.0.7001",
-      baseConfig.operationalAccount.accountId,
-      1n,
-    )
+    .addTokenTransfer("0.0.7001", baseConfig.operationalAccount.accountId, 1n)
     .setTransactionId(TransactionId.generate("0.0.7162784"))
     .setNodeAccountIds([AccountId.fromString("0.0.3")])
     .freeze()
     .sign(senderPrivateKey);
+  const inspected = inspectHederaTransaction(
+    Buffer.from(transaction.toBytes()).toString("base64"),
+  );
+  assert.deepEqual(inspected.tokenTransfers["0.0.7001"], [
+    { accountId: senderAccountId, amount: "-1" },
+    { accountId: baseConfig.operationalAccount.accountId, amount: "1" },
+  ]);
+  assert.equal(senderPrivateKey.publicKey.verifyTransaction(transaction), true);
   const paymentPayload: PaymentPayload = {
     x402Version: 2,
     resource: { url: baseConfig.resourceUrl },
@@ -230,29 +235,43 @@ test("payment gate quotes one HBAR review check before settlement", async () => 
   assert.equal(facilitator.settled.length, 0);
 });
 
-test("payment gate settles up front and returns the settlement id", async () => {
+test("payment gate settles a separately signed HBAR payment against its quote", async () => {
   const facilitator = new OfflineFacilitator();
   const requirements = await paymentRequirements(facilitator);
   const gate = await createPaymentGate(baseConfig, facilitator);
-  const paymentPayload: PaymentPayload = {
-    x402Version: 2,
-    resource: {
-      url: baseConfig.resourceUrl,
-    },
-    accepted: requirements,
-    payload: { transaction: "offline-partially-signed-transaction" },
-  };
+  const paymentHeader = await createPaymentSignatureHeader(
+    facilitator,
+    paymentPayerAccountId,
+    paymentPayerKey,
+  );
+  const paymentPayload = decodePaymentSignatureHeader(paymentHeader);
+  assert.deepEqual(paymentPayload.accepted, requirements);
+  assert.equal(requirements.asset, "0.0.0");
+  const transaction = paymentPayload.payload.transaction;
+  assert.equal(typeof transaction, "string");
+  if (typeof transaction !== "string") assert.fail("expected transaction");
+  const inspected = inspectHederaTransaction(transaction);
+  assert.deepEqual(inspected.hbarTransfers, [
+    { accountId: paymentPayerAccountId, amount: `-${requirements.amount}` },
+    { accountId: requirements.payTo, amount: requirements.amount },
+  ]);
+  assert.deepEqual(inspected.tokenTransfers, {});
+  assert.equal(
+    paymentPayerKey.publicKey.verifyTransaction(
+      Transaction.fromBytes(Buffer.from(transaction, "base64")),
+    ),
+    true,
+  );
 
-  const outcome = await gate.review(encodePaymentSignatureHeader(paymentPayload));
+  const outcome = await gate.review(
+    encodePaymentSignatureHeader(paymentPayload),
+  );
 
   assert.equal(outcome.paid, true);
   if (!outcome.paid) {
     throw new Error("expected a settled review payment");
   }
-  assert.equal(
-    outcome.settlementId,
-    "0.0.7162784@1788537600.000000001",
-  );
+  assert.equal(outcome.settlementId, "0.0.7162784@1788537600.000000001");
   assert.ok(outcome.responseHeaders["PAYMENT-RESPONSE"]);
   assert.equal(facilitator.verifyCalls, 0);
   assert.equal(facilitator.settled.length, 1);
@@ -552,25 +571,28 @@ test("INVARIANT: a payment whose token sender is the treasury account must be re
   assert.equal(facilitator.settled.length, 0);
 });
 
-test("payment gate accepts the operational account as a token sender", async () => {
-  const facilitator = new OfflineFacilitator();
-  const operationalPrivateKey = PrivateKey.generateED25519();
-  const config: PaymentGateConfig = {
-    ...baseConfig,
-    operationalAccount: {
-      ...baseConfig.operationalAccount,
-      publicKey: operationalPrivateKey.publicKey,
-    },
-  };
+test("INVARIANT: a separately keyed token sender reaches facilitator validation and preserves its refusal", async () => {
+  const facilitator = new OfflineFacilitator({
+    success: false,
+    errorReason: "token payment does not satisfy the HBAR quote",
+    transaction: "",
+    network: "hedera:testnet",
+  });
   const paymentHeader = await createTokenPaymentSignatureHeader(
     facilitator,
-    config.operationalAccount.accountId,
-    operationalPrivateKey,
+    paymentPayerAccountId,
+    paymentPayerKey,
   );
-  const gate = await createPaymentGate(config, facilitator);
+  const gate = await createPaymentGate(baseConfig, facilitator);
 
   const outcome = await gate.review(paymentHeader);
 
-  assert.equal(outcome.paid, true);
+  assert.equal(outcome.paid, false);
+  assert.equal(facilitator.verifyCalls, 0);
   assert.equal(facilitator.settled.length, 1);
+  assert.deepEqual(
+    facilitator.settled[0].paymentPayload,
+    decodePaymentSignatureHeader(paymentHeader),
+  );
+  assert.equal(facilitator.settled[0].paymentRequirements.asset, "0.0.0");
 });

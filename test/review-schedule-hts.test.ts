@@ -3,10 +3,13 @@ import test from "node:test";
 
 import { KeyList, PrivateKey } from "@hiero-ledger/sdk";
 import { proto } from "@hiero-ledger/proto";
+import { canonicalize } from "json-canonicalize";
 
 import {
+  canonicalMandateBytes,
   mandateDigest,
   parseMandateEnvelope,
+  verifyMandateSignature,
   type Mandate,
 } from "../src/mandate.ts";
 import {
@@ -379,5 +382,221 @@ test("reviewSchedule refuses structurally valid HTS until custom fees can be ver
     tokenMandate,
     schedule(tokenMandate, tokenCryptoTransfer()),
     /HTS custom-fee state is not verified/,
+  );
+});
+
+for (const [name, tokenTransfers] of [
+  ["missing", undefined],
+  ["null", null],
+  ["empty", []],
+  ["multiple", [tokenTransfer(), tokenTransfer()]],
+  ["missing entry", [null]],
+] as const) {
+  test(`INVARIANT: HTS refuses ${name} token lists with the exact cardinality reason`, () => {
+    assertRefusal(
+      tokenMandate,
+      schedule(tokenMandate, {
+        tokenTransfers,
+      } as proto.ICryptoTransferTransactionBody),
+      /^HTS transfer must contain exactly one token transfer list$/,
+    );
+  });
+}
+
+test("INVARIANT: an HTS token list with an unsupported field must be refused", () => {
+  assertRefusal(
+    tokenMandate,
+    schedule(
+      tokenMandate,
+      tokenCryptoTransfer(tokenTransfer({ unreviewedField: true })),
+    ),
+    /^unsupported token transfer-list field: unreviewedField$/,
+  );
+});
+
+test("INVARIANT: an HTS body's empty HBAR list must contain only reviewed fields", () => {
+  assertRefusal(
+    tokenMandate,
+    schedule(tokenMandate, {
+      ...tokenCryptoTransfer(),
+      transfers: {
+        accountAmounts: [],
+        unreviewedField: true,
+      } as proto.ITransferList,
+    }),
+    /^unsupported HBAR transfer-list field: unreviewedField$/,
+  );
+});
+
+for (const [name, token] of [
+  ["missing", undefined],
+  ["null", null],
+  ["missing token number", { shardNum: 0, realmNum: 0 }],
+  ["missing shard", { realmNum: 0, tokenNum: 7001 }],
+  ["missing realm", { shardNum: 0, tokenNum: 7001 }],
+  ["negative shard", { shardNum: -1, realmNum: 0, tokenNum: 7001 }],
+  ["negative realm", { shardNum: 0, realmNum: -1, tokenNum: 7001 }],
+  ["negative token number", { shardNum: 0, realmNum: 0, tokenNum: -1 }],
+  ["noninteger token number", { shardNum: 0, realmNum: 0, tokenNum: 1.5 }],
+  ["unsupported field", { ...numericToken("7001"), unreviewedField: true }],
+] as const) {
+  test(`INVARIANT: an HTS token ID with ${name} must be refused`, () => {
+    assertRefusal(
+      tokenMandate,
+      schedule(tokenMandate, tokenCryptoTransfer(tokenTransfer({ token }))),
+      /^token ID does not match the mandate asset$/,
+    );
+  });
+}
+
+for (const [name, nftTransfers] of [
+  ["missing", undefined],
+  ["null", null],
+  [
+    "populated",
+    [
+      {
+        senderAccountID: numericAccount("1001"),
+        receiverAccountID: numericAccount("1002"),
+        serialNumber: 1,
+      },
+    ],
+  ],
+] as const) {
+  test(`INVARIANT: an HTS ${name} NFT list must be refused`, () => {
+    assertRefusal(
+      tokenMandate,
+      schedule(
+        tokenMandate,
+        tokenCryptoTransfer(tokenTransfer({ nftTransfers })),
+      ),
+      /^token transfer must not contain NFT transfers$/,
+    );
+  });
+}
+
+for (const value of [0, 8]) {
+  test(`INVARIANT: HTS expectedDecimals ${value} must be refused`, () => {
+    assertRefusal(
+      tokenMandate,
+      schedule(
+        tokenMandate,
+        tokenCryptoTransfer(tokenTransfer({ expectedDecimals: { value } })),
+      ),
+      /^token transfer expectedDecimals is outside the reviewed model$/,
+    );
+  });
+}
+
+test("INVARIANT: a protobuf-decoded HTS body must reach the custom-fee refusal", () => {
+  const decodedBody = proto.SchedulableTransactionBody.decode(
+    proto.SchedulableTransactionBody.encode({
+      transactionFee: 100000000,
+      memo: mandateDigest(tokenMandate),
+      cryptoTransfer: {
+        tokenTransfers: [
+          {
+            token: { shardNum: 0, realmNum: 0, tokenNum: 7001 },
+            transfers: [
+              {
+                accountID: { shardNum: 0, realmNum: 0, accountNum: 1001 },
+                amount: -25000000,
+                isApproval: false,
+              },
+              {
+                accountID: { shardNum: 0, realmNum: 0, accountNum: 1002 },
+                amount: 25000000,
+                isApproval: false,
+              },
+            ],
+          },
+        ],
+      },
+    } as unknown as proto.ISchedulableTransactionBody).finish(),
+  );
+  assert.ok(decodedBody instanceof proto.SchedulableTransactionBody);
+  assertRefusal(
+    tokenMandate,
+    {
+      ...schedule(tokenMandate, tokenCryptoTransfer()),
+      schedulableTransactionBody: decodedBody,
+    },
+    /^HTS custom-fee state is not verified.*$/,
+  );
+});
+
+for (const value of [hbarMandate, tokenMandate]) {
+  test(`INVARIANT: schema-v2 ${JSON.stringify(value.asset)} authenticates only the owner in domain 2`, () => {
+    const ownerKey = PrivateKey.generateED25519();
+    const expectedBytes = new TextEncoder().encode(
+      `COUNTERSIGN-MANDATE\u00002\u0000${canonicalize(value)}`,
+    );
+    assert.deepEqual(canonicalMandateBytes(value), expectedBytes);
+    const signature = Buffer.from(ownerKey.sign(expectedBytes)).toString(
+      "base64url",
+    );
+    const envelope = parseMandateEnvelope({ mandate: value, signature });
+    assert.equal(verifyMandateSignature(envelope, ownerKey.publicKey), true);
+    assert.equal(
+      verifyMandateSignature(envelope, PrivateKey.generateED25519().publicKey),
+      false,
+    );
+
+    const legacyDomainSignature = Buffer.from(
+      ownerKey.sign(
+        new TextEncoder().encode(
+          `COUNTERSIGN-MANDATE\u00001\u0000${canonicalize(value)}`,
+        ),
+      ),
+    ).toString("base64url");
+    assert.equal(
+      verifyMandateSignature(
+        parseMandateEnvelope({
+          mandate: value,
+          signature: legacyDomainSignature,
+        }),
+        ownerKey.publicKey,
+      ),
+      false,
+    );
+    for (const asset of [
+      { kind: "hbar" },
+      { kind: "hts", tokenId: "0.0.7001" },
+      { kind: "hts", tokenId: "0.0.7002" },
+    ]) {
+      if (canonicalize(asset) === canonicalize(value.asset)) continue;
+      assert.equal(
+        verifyMandateSignature(
+          parseMandateEnvelope({ mandate: { ...value, asset }, signature }),
+          ownerKey.publicKey,
+        ),
+        false,
+      );
+    }
+    assert.equal(
+      verifyMandateSignature(
+        parseMandateEnvelope({ mandate: baseMandateFields, signature }),
+        ownerKey.publicKey,
+      ),
+      false,
+    );
+  });
+}
+
+test("INVARIANT: legacy HBAR mandates must refuse signatures using domain 2", () => {
+  const ownerKey = PrivateKey.generateED25519();
+  const signature = Buffer.from(
+    ownerKey.sign(
+      new TextEncoder().encode(
+        `COUNTERSIGN-MANDATE\u00002\u0000${canonicalize(baseMandateFields)}`,
+      ),
+    ),
+  ).toString("base64url");
+  assert.equal(
+    verifyMandateSignature(
+      parseMandateEnvelope({ mandate: baseMandateFields, signature }),
+      ownerKey.publicKey,
+    ),
+    false,
   );
 });

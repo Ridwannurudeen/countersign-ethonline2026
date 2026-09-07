@@ -1,21 +1,24 @@
 import json
 import subprocess
+from base64 import b64decode, b64encode
 from pathlib import Path
 
 import pytest
 from hiero_sdk_python import PrivateKey
+from hiero_sdk_python.hapi.services.transaction_pb2 import Transaction
+from hiero_sdk_python.hapi.services.transaction_contents_pb2 import SignedTransaction
 from x402.client import x402Client
 from x402.schemas import PaymentRequirements
 
-from python.x402.mechanisms.hedera.constants import (
+from x402.mechanisms.hedera.constants import (
     HBAR_ASSET_ID,
     HEDERA_TESTNET_CAIP2,
 )
-from python.x402.mechanisms.hedera.exact.client import ExactHederaScheme
-from python.x402.mechanisms.hedera.exact.register import (
+from x402.mechanisms.hedera.exact.client import ExactHederaScheme
+from x402.mechanisms.hedera.exact.register import (
     register_exact_hedera_client,
 )
-from python.x402.mechanisms.hedera.signer import create_client_hedera_signer
+from x402.mechanisms.hedera.signer import create_client_hedera_signer
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -44,7 +47,12 @@ def inspect_with_typescript(transaction: str) -> dict[str, object]:
     result = subprocess.run(
         ["node", str(INSPECT_SCRIPT)],
         cwd=REPO_ROOT,
-        input=json.dumps({"transaction": transaction}),
+        input=json.dumps(
+            {
+                "transaction": transaction,
+                "expectedPublicKey": PRIVATE_KEY.public_key().to_string_raw(),
+            }
+        ),
         check=True,
         capture_output=True,
         text=True,
@@ -87,6 +95,32 @@ def test_checked_in_fixture_decodes_with_typescript() -> None:
     inspected = inspect_with_typescript(fixture["payload"]["transaction"])
 
     assert inspected == fixture["expectedDecode"]
+
+
+@pytest.mark.parametrize("asset", [HBAR_ASSET_ID, TOKEN_ID])
+def test_invariant_corrupted_payment_signature_must_fail_verification(
+    asset: str,
+) -> None:
+    signer = create_client_hedera_signer(SENDER_ACCOUNT_ID, PRIVATE_KEY)
+    payload = ExactHederaScheme(signer).create_payment_payload(requirements(asset))
+    original = inspect_with_typescript(payload["transaction"])
+    transaction = Transaction.FromString(b64decode(payload["transaction"]))
+    signed = SignedTransaction.FromString(transaction.signedTransactionBytes)
+    assert len(signed.sigMap.sigPair) == 1
+    pair = signed.sigMap.sigPair[0]
+    assert pair.pubKeyPrefix.hex() == PRIVATE_KEY.public_key().to_string_raw()
+    signature = bytearray(pair.ed25519)
+    assert len(signature) == 64
+    signature[0] ^= 1
+    pair.ed25519 = bytes(signature)
+    transaction.signedTransactionBytes = signed.SerializeToString()
+    corrupted = b64encode(transaction.SerializeToString()).decode("ascii")
+
+    with pytest.raises(subprocess.CalledProcessError) as refused:
+        inspect_with_typescript(corrupted)
+
+    assert "expected payer signature must verify" in refused.value.stderr
+    assert original["transactionIdAccountId"] == FEE_PAYER_ACCOUNT_ID
 
 
 def test_exact_client_requires_the_exact_scheme() -> None:

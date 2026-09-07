@@ -59,7 +59,7 @@ The validator inspects `ScheduleInfo.schedulableTransactionBody` directly. Appro
 
 ## Mandates
 
-A mandate has exactly these fields:
+A legacy HBAR v1 mandate has exactly these fields (no `schemaVersion` or `asset`):
 
 | Field | Format |
 | --- | --- |
@@ -73,11 +73,28 @@ A mandate has exactly these fields:
 
 The signature is stored outside the mandate object as an unpadded base64url string encoding exactly 64 bytes. It is produced by the same Ed25519 owner key used in the treasury's direct branch.
 
-The signing preimage is:
+The legacy HBAR v1 signing preimage is:
 
 ```text
 UTF8("COUNTERSIGN-MANDATE") || 0x00 || UTF8("1") || 0x00 || UTF8(JCS(mandate))
 ```
+
+Schema v2 requires all the fields above plus `schemaVersion: "2"` and an explicit
+`asset`. Use `{ "kind": "hbar" }` for HBAR or
+`{ "kind": "hts", "tokenId": "0.0.7001" }` for one fungible HTS token. The token
+ID is normalized to numeric `shard.realm.num`; there is no default asset in v2.
+The retained `maxAmountTinybars` field caps tinybars for HBAR and the token's smallest
+integer units for HTS. Both additional fields are included in the canonical object.
+The v2 signing preimage uses domain version `"2"`:
+
+```text
+UTF8("COUNTERSIGN-MANDATE") || 0x00 || UTF8("2") || 0x00 || UTF8(JCS(mandate))
+```
+
+**HTS approval is currently disabled.** Every token proposal is refused: invalid
+proposals fail their relevant invariant, and every otherwise valid HTS proposal
+is refused at the custom-fee check because consensus token fee state is not verified.
+Parsing and signing an HTS mandate does not enable token approval.
 
 `JCS` is RFC 8785 JSON Canonicalization Scheme via the pinned `json-canonicalize@3.0.0` package. `mandateDigest` is the lowercase SHA-256 hex digest of that complete domain-separated preimage. The digest is 64 ASCII characters, so it fits Hedera's 100-byte memo limit.
 
