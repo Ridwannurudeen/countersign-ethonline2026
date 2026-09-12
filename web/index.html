@@ -1,0 +1,1208 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Countersign</title>
+    <meta name="description" content="An authorization boundary for AI agents that hold HBAR on Hedera. The agent proposes, the network refuses on its own, and a paid, independent guard decides. Testnet." />
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #172019;
+        --muted: #4d574f;
+        --canvas: #f4f1e8;
+        --surface: #fffcf4;
+        --sunk: #ebe7dc;
+        --line: #b8b4a8;
+        --line-strong: #687269;
+        --green: #145c43;
+        --green-soft: #dcebe3;
+        --red: #8b2d27;
+        --red-soft: #f8e9e5;
+        --panel: #172019;
+        --panel-text: #f4f1e8;
+        --panel-dim: #c9c4b6;
+        --panel-green: #8fd0b4;
+        --panel-red: #f0a79f;
+        --serif: Charter, "Bitstream Charter", "Iowan Old Style", Georgia, "Times New Roman", serif;
+        --mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+        --measure: 40rem;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        font-family: var(--serif);
+        font-size: 106.25%;
+        line-height: 1.55;
+        color: var(--ink);
+        background: var(--canvas);
+        -webkit-text-size-adjust: 100%;
+      }
+
+      body {
+        min-height: 100vh;
+        margin: 0;
+      }
+
+      body::before {
+        display: block;
+        height: 0.4rem;
+        background: var(--green);
+        content: "";
+      }
+
+      .wrap {
+        width: min(72rem, 100% - 2.5rem);
+        margin-inline: auto;
+      }
+
+      .skip-link {
+        position: fixed;
+        top: 0.75rem;
+        left: 0.75rem;
+        z-index: 4;
+        transform: translateY(-180%);
+        padding: 0.7rem 0.9rem;
+        font-family: var(--mono);
+        font-size: 0.8rem;
+        color: var(--panel-text);
+        background: var(--green);
+      }
+
+      .skip-link:focus {
+        transform: translateY(0);
+      }
+
+      /* ---- header ---- */
+
+      .site-head {
+        border-bottom: 1px solid var(--line);
+      }
+
+      .head-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 1rem 2rem;
+        padding: 1.1rem 0 0.9rem;
+      }
+
+      .brand {
+        display: grid;
+        gap: 0.05rem;
+        color: var(--ink);
+        text-decoration: none;
+      }
+
+      .brand-name {
+        font-size: 1.4rem;
+        font-weight: 400;
+        letter-spacing: -0.02em;
+        line-height: 1;
+      }
+
+      .brand-sub {
+        font-family: var(--mono);
+        font-size: 0.68rem;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+      }
+
+      .site-nav ul {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem 1.35rem;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .site-nav a {
+        display: inline-block;
+        padding: 0.2rem 0;
+        font-family: var(--mono);
+        font-size: 0.74rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+        text-decoration: none;
+        border-bottom: 1px solid transparent;
+      }
+
+      .site-nav a:hover {
+        color: var(--ink);
+      }
+
+      .site-nav a[aria-current="page"] {
+        color: var(--ink);
+        border-bottom-color: var(--ink);
+      }
+
+      /* ---- type ---- */
+
+      h1,
+      h2,
+      h3,
+      p,
+      ul,
+      ol,
+      dl,
+      pre,
+      figure,
+      table {
+        margin-top: 0;
+      }
+
+      h1 {
+        max-width: 15ch;
+        margin-bottom: 1.25rem;
+        font-size: clamp(2.5rem, 7.5vw, 5rem);
+        font-weight: 400;
+        letter-spacing: -0.03em;
+        line-height: 0.98;
+        text-wrap: balance;
+      }
+
+      h1 em {
+        font-style: italic;
+        color: var(--green);
+      }
+
+      h2 {
+        max-width: 24ch;
+        margin-bottom: 1rem;
+        font-size: clamp(1.7rem, 3.4vw, 2.5rem);
+        font-weight: 400;
+        letter-spacing: -0.025em;
+        line-height: 1.08;
+        text-wrap: balance;
+      }
+
+      h3 {
+        margin-bottom: 0.5rem;
+        font-size: 1.2rem;
+        font-weight: 400;
+        letter-spacing: -0.01em;
+      }
+
+      p,
+      li {
+        max-width: var(--measure);
+      }
+
+      .lede {
+        font-size: 1.2rem;
+        line-height: 1.5;
+        max-width: 34rem;
+      }
+
+      .eyebrow,
+      .label,
+      .tag,
+      .qualifier,
+      th,
+      dt,
+      .steps li::before,
+      figcaption,
+      caption {
+        font-family: var(--mono);
+        font-size: 0.74rem;
+        font-weight: 400;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .eyebrow {
+        margin-bottom: 1.5rem;
+        color: var(--green);
+      }
+
+      .qualifier {
+        margin-top: 1.5rem;
+        color: var(--muted);
+        text-transform: none;
+        letter-spacing: 0.02em;
+        font-size: 0.8rem;
+      }
+
+      code,
+      pre,
+      .mono {
+        font-family: var(--mono);
+        font-size: 0.86em;
+      }
+
+      code {
+        overflow-wrap: anywhere;
+      }
+
+      pre {
+        overflow-x: auto;
+        padding: 1rem 1.15rem;
+        border: 1px solid var(--line);
+        background: var(--surface);
+        line-height: 1.5;
+        font-size: 0.82rem;
+      }
+
+      pre code {
+        font-size: inherit;
+      }
+
+      a {
+        color: var(--ink);
+        overflow-wrap: anywhere;
+        text-decoration: underline;
+        text-decoration-color: var(--line-strong);
+        text-decoration-thickness: 1px;
+        text-underline-offset: 0.2em;
+        transition: text-decoration-color 150ms ease-out, color 150ms ease-out;
+      }
+
+      a:hover {
+        color: var(--green);
+        text-decoration-color: var(--green);
+      }
+
+      :focus-visible {
+        outline: 2px solid var(--green);
+        outline-offset: 3px;
+      }
+
+      .tag {
+        display: inline-block;
+        padding: 0.15rem 0.5rem;
+        border: 1px solid currentColor;
+      }
+
+      .tag-approved {
+        color: var(--green);
+        background: var(--green-soft);
+      }
+
+      .tag-refused {
+        color: var(--red);
+        background: var(--red-soft);
+      }
+
+      /* ---- sections ---- */
+
+      main {
+        padding-bottom: 3rem;
+      }
+
+      .section {
+        padding: 4.5rem 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .section:last-of-type {
+        border-bottom: 0;
+      }
+
+      .section-head {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr);
+        gap: 1.5rem 3rem;
+        align-items: start;
+        margin-bottom: 2.25rem;
+      }
+
+      .section-head h2 {
+        margin-bottom: 0;
+      }
+
+      .section-head p:last-child {
+        margin-bottom: 0;
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1.15fr) minmax(18rem, 0.85fr);
+        gap: 3rem 4rem;
+        align-items: start;
+        padding: 3.5rem 0 4.5rem;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .page-hero {
+        padding: 4.5rem 0 3.5rem;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        margin-top: 1.75rem;
+      }
+
+      .btn {
+        display: inline-block;
+        padding: 0.7rem 1.1rem;
+        border: 1px solid var(--ink);
+        font-family: var(--mono);
+        font-size: 0.78rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        text-decoration: none;
+        color: var(--ink);
+        background: transparent;
+        transition: background-color 150ms ease-out, color 150ms ease-out, border-color 150ms ease-out;
+      }
+
+      .btn:hover {
+        color: var(--ink);
+        background: var(--sunk);
+      }
+
+      .btn-primary {
+        color: var(--panel-text);
+        background: var(--ink);
+      }
+
+      .btn-primary:hover {
+        color: var(--panel-text);
+        border-color: var(--green);
+        background: var(--green);
+      }
+
+      /* ---- ledger panel (dark) ---- */
+
+      .ledger {
+        margin: 0;
+        padding: 1.4rem 1.5rem 1.5rem;
+        color: var(--panel-text);
+        background: var(--panel);
+      }
+
+      .ledger figcaption {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.6rem;
+        margin-bottom: 1.25rem;
+        color: var(--panel-dim);
+      }
+
+      .ledger .tag-refused {
+        color: var(--panel-red);
+        background: transparent;
+      }
+
+      .ledger .tag-approved {
+        color: var(--panel-green);
+        background: transparent;
+      }
+
+      .fields {
+        display: grid;
+        gap: 0.55rem;
+        margin: 0;
+      }
+
+      .fields > div {
+        display: grid;
+        grid-template-columns: minmax(9rem, 12rem) minmax(0, 1fr);
+        gap: 0.25rem 1rem;
+        padding-bottom: 0.55rem;
+        border-bottom: 1px solid rgba(244, 241, 232, 0.18);
+      }
+
+      .fields > div:last-child {
+        border-bottom: 0;
+      }
+
+      .fields dt {
+        color: var(--panel-dim);
+        text-transform: none;
+        letter-spacing: 0.02em;
+        font-size: 0.8rem;
+      }
+
+      .fields dd {
+        margin: 0;
+        font-family: var(--mono);
+        font-size: 0.86rem;
+        overflow-wrap: anywhere;
+      }
+
+      .fields .absent {
+        color: var(--panel-red);
+      }
+
+      .ledger p {
+        max-width: none;
+        margin: 1.25rem 0 0;
+        font-family: var(--mono);
+        font-size: 0.78rem;
+        line-height: 1.6;
+        color: var(--panel-dim);
+      }
+
+      .ledger a {
+        color: var(--panel-text);
+        text-decoration-color: var(--panel-dim);
+      }
+
+      .ledger a:hover {
+        color: var(--panel-green);
+        text-decoration-color: var(--panel-green);
+      }
+
+      .ledger :focus-visible {
+        outline-color: var(--panel-green);
+      }
+
+      /* ---- tables ---- */
+
+      .scroll {
+        overflow-x: auto;
+        border: 1px solid var(--line);
+        background: var(--surface);
+      }
+
+      .scroll:focus-visible {
+        outline-offset: 0;
+      }
+
+      table {
+        width: 100%;
+        min-width: 36rem;
+        border-collapse: collapse;
+        font-size: 0.95rem;
+      }
+
+      caption {
+        padding: 0.8rem 1rem;
+        text-align: left;
+        color: var(--muted);
+        border-bottom: 1px solid var(--line);
+      }
+
+      th,
+      td {
+        padding: 0.7rem 1rem;
+        text-align: left;
+        vertical-align: top;
+        border-bottom: 1px solid var(--line);
+      }
+
+      th {
+        color: var(--muted);
+      }
+
+      thead th {
+        border-bottom: 1px solid var(--line-strong);
+      }
+
+      tbody th {
+        width: 12rem;
+        text-transform: none;
+        letter-spacing: 0.02em;
+        font-size: 0.8rem;
+      }
+
+      tbody tr:last-child th,
+      tbody tr:last-child td {
+        border-bottom: 0;
+      }
+
+      td.approved {
+        color: var(--green);
+      }
+
+      td.refused {
+        color: var(--red);
+      }
+
+      td .mono {
+        overflow-wrap: anywhere;
+      }
+
+      /* ---- key tree + state ledger ---- */
+
+      .split {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+        gap: 2rem 3rem;
+        align-items: start;
+      }
+
+      .tree {
+        margin: 0;
+        font-size: 0.95rem;
+      }
+
+      /* ---- steps (timeline) ---- */
+
+      .steps {
+        counter-reset: step;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        border-top: 1px solid var(--line);
+      }
+
+      .steps li {
+        position: relative;
+        max-width: none;
+        display: grid;
+        grid-template-columns: 4.5rem minmax(0, 1fr);
+        gap: 0.5rem 1.5rem;
+        padding: 1.25rem 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .steps li::before {
+        counter-increment: step;
+        content: counter(step, decimal-leading-zero);
+        padding-top: 0.2rem;
+        font-size: 0.9rem;
+        color: var(--muted);
+      }
+
+      .steps h3 {
+        margin-bottom: 0.35rem;
+      }
+
+      .steps p {
+        margin-bottom: 0.5rem;
+      }
+
+      .steps p:last-child {
+        margin-bottom: 0;
+      }
+
+      .fork {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 1rem;
+        margin-top: 0.5rem;
+      }
+
+      .fork > div {
+        padding: 0.9rem 1rem;
+        border: 1px solid var(--line);
+        background: var(--surface);
+      }
+
+      .fork .tag {
+        margin-bottom: 0.5rem;
+      }
+
+      .fork p {
+        margin: 0;
+        font-size: 0.95rem;
+      }
+
+      /* ---- definition rows ---- */
+
+      .rows {
+        margin: 0;
+        border-top: 1px solid var(--line);
+      }
+
+      .rows > div {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 2.2fr);
+        gap: 0.5rem 2rem;
+        padding: 1.1rem 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .rows dt {
+        text-transform: none;
+        letter-spacing: 0.02em;
+        font-size: 0.82rem;
+        color: var(--muted);
+        overflow-wrap: anywhere;
+      }
+
+      .rows dd {
+        margin: 0;
+        max-width: var(--measure);
+      }
+
+      .rows dd p:last-child {
+        margin-bottom: 0;
+      }
+
+      /* ---- limits list ---- */
+
+      .limits {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        counter-reset: limit;
+        border-top: 1px solid var(--line);
+      }
+
+      .limits li {
+        display: grid;
+        grid-template-columns: 3rem minmax(0, 1fr);
+        gap: 0.5rem 1.5rem;
+        max-width: none;
+        padding: 1.4rem 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .limits li::before {
+        counter-increment: limit;
+        content: counter(limit, decimal-leading-zero);
+        padding-top: 0.25rem;
+        font-family: var(--mono);
+        font-size: 0.9rem;
+        color: var(--muted);
+      }
+
+      .limits h3 {
+        margin-bottom: 0.4rem;
+      }
+
+      .limits p {
+        margin-bottom: 0.6rem;
+      }
+
+      .limits p:last-child {
+        margin-bottom: 0;
+      }
+
+      .next {
+        font-size: 0.92rem;
+        color: var(--muted);
+      }
+
+      .next strong {
+        font-weight: 400;
+        font-family: var(--mono);
+        font-size: 0.74rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      /* ---- footer ---- */
+
+      .site-foot {
+        padding: 2.5rem 0 3rem;
+        border-top: 1px solid var(--line);
+        font-size: 0.92rem;
+        color: var(--muted);
+      }
+
+      .foot-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 2rem;
+      }
+
+      .foot-grid h2 {
+        margin-bottom: 0.6rem;
+        font-family: var(--mono);
+        font-size: 0.74rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .foot-grid ul {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .foot-grid li {
+        margin-bottom: 0.3rem;
+      }
+
+      .foot-grid a {
+        color: var(--ink);
+      }
+
+      .colophon {
+        margin-top: 2.5rem;
+        padding-top: 1.25rem;
+        border-top: 1px solid var(--line);
+      }
+
+      .colophon p {
+        margin: 0 0 0.4rem;
+        max-width: none;
+      }
+
+      /* ---- responsive ---- */
+
+      @media (max-width: 60rem) {
+        .hero,
+        .section-head,
+        .split {
+          grid-template-columns: minmax(0, 1fr);
+        }
+
+        .hero {
+          padding-top: 3.5rem;
+        }
+      }
+
+      @media (max-width: 42rem) {
+        .foot-grid,
+        .fork,
+        .rows > div {
+          grid-template-columns: minmax(0, 1fr);
+        }
+
+        .steps li,
+        .limits li {
+          grid-template-columns: 2.5rem minmax(0, 1fr);
+          gap: 0.4rem 0.9rem;
+        }
+
+        .fields > div {
+          grid-template-columns: minmax(0, 1fr);
+          gap: 0.15rem;
+        }
+
+        .section {
+          padding: 3rem 0;
+        }
+
+        .page-hero {
+          padding: 3rem 0 2.5rem;
+        }
+
+        .lede {
+          font-size: 1.08rem;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          transition: none !important;
+          animation: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-head">
+      <div class="wrap head-row">
+        <a class="brand" href="./index.html">
+          <span class="brand-name">Countersign</span>
+          <span class="brand-sub">guard 0.0.10502369 &middot; hedera:testnet</span>
+        </a>
+        <nav class="site-nav" aria-label="Site">
+          <ul>
+            <li><a href="./index.html" aria-current="page">Overview</a></li>
+            <li><a href="./how-it-works.html">How it works</a></li>
+            <li><a href="./developers.html">Developers</a></li>
+            <li><a href="./limitations.html">Limitations</a></li>
+            <li><a href="./evidence.html">Evidence</a></li>
+            <li><a href="./replay.html">Replay</a></li>
+            <li><a href="https://github.com/Ridwannurudeen/countersign-ethonline2026" rel="noreferrer">Source</a></li>
+          </ul>
+        </nav>
+      </div>
+    </header>
+    <main id="main" class="wrap">
+      <section class="hero" aria-labelledby="hero-title">
+        <div>
+          <p class="eyebrow">Authorization boundary &middot; AI agents holding HBAR &middot; Hedera testnet</p>
+          <h1 id="hero-title">The agent proposes. The network refuses. A paid guard <em>decides.</em></h1>
+          <p class="lede">
+            An agent's treasury on Hedera is keyed <code>1-of[owner, 2-of[agent, guard]]</code>.
+            The agent can publish the transfer it wants, but its key alone satisfies neither
+            branch, so Hedera itself rejects it. An independent guard checks the proposal
+            against a policy the owner signed and adds the second signature only on an exact
+            match. Callers pay the guard per review over x402, and the answer can be no.
+          </p>
+          <div class="actions">
+            <a class="btn btn-primary" href="#live-pairs">Read a refusal on the ledger</a>
+            <a class="btn" href="./developers.html">The endpoints</a>
+          </div>
+          <p class="qualifier">
+            Testnet only. One guarded treasury. Every recorded run is operator-run; none is a user.
+          </p>
+        </div>
+        <figure class="ledger" aria-labelledby="ledger-title">
+          <figcaption id="ledger-title">
+            <span class="tag tag-refused">Refused</span>
+            <span>Schedule 0.0.10502603, as the public mirror node reports it</span>
+          </figcaption>
+          <dl class="fields">
+            <div><dt>executed_timestamp</dt><dd>null</dd></div>
+            <div><dt>deleted</dt><dd>false</dd></div>
+            <div><dt>signatures[]</dt><dd>1 entry &mdash; agent prefix a357ff06&hellip;</dd></div>
+            <div><dt>guard prefix 41510f63&hellip;</dt><dd class="absent">absent</dd></div>
+            <div><dt>treasury 0.0.10502365</dt><dd>unchanged</dd></div>
+            <div><dt>review fee</dt><dd>1,000,000 tinybars, settled</dd></div>
+            <div><dt>failed check</dt><dd>recipient outside the mandate allowlist</dd></div>
+          </dl>
+          <p>
+            <a href="https://testnet.mirrornode.hedera.com/api/v1/schedules/0.0.10502603" rel="noreferrer">Open the schedule on the mirror node</a>
+            &middot; <a href="https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10502545/messages/2" rel="noreferrer">the guard's verdict record</a>
+            &middot; <a href="https://testnet.mirrornode.hedera.com/api/v1/transactions/0.0.7162784-1789222049-843720974" rel="noreferrer">the fee settlement</a>
+          </p>
+        </figure>
+      </section>
+
+      <section class="section" aria-labelledby="public-no-title">
+        <div class="section-head">
+          <h2 id="public-no-title">You pay for a decision that can be no, and the no is public.</h2>
+          <div>
+            <p>
+              The common design for agent spending controls makes the decision inside a
+              vendor's own boundary and records a denial in the vendor's own logs. To confirm
+              that a transfer was blocked, you ask the vendor.
+            </p>
+            <p>
+              Countersign's refusal is the absence of a signature on a public ledger. The
+              schedule exists, its <code>executed_timestamp</code> is null, and the guard's
+              key prefix is missing from <code>signatures[]</code>. Anyone can confirm that
+              with one unauthenticated request to the Hedera mirror node, without running our
+              code or taking our word for it.
+            </p>
+          </div>
+        </div>
+        <div class="scroll" tabindex="0" role="region" aria-label="Where the decision and its record live, compared">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col"></th>
+                <th scope="col">Policy engines inside a vendor boundary<br /><span style="text-transform:none;letter-spacing:0.02em">AWS Bedrock AgentCore Payments, Fireblocks, Coinbase, Turnkey, Google AP2</span></th>
+                <th scope="col">Countersign</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">Where the check runs</th>
+                <td>Inside the vendor's service.</td>
+                <td>At Hedera consensus, by the treasury's own key tree. The guard adds one signature; it never executes anything itself.</td>
+              </tr>
+              <tr>
+                <th scope="row">Where a denial is recorded</th>
+                <td>In the vendor's private logs.</td>
+                <td>On the public ledger: an unexecuted schedule with no guard signature, plus a verdict record on a Hedera Consensus Service topic.</td>
+              </tr>
+              <tr>
+                <th scope="row">Who can verify a refusal</th>
+                <td>The vendor, and whoever it grants access.</td>
+                <td>Anyone with HTTP. No account with us, no API key, no client library.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="key-tree-title">
+        <div class="section-head">
+          <h2 id="key-tree-title">Why the network says no on its own</h2>
+          <p>
+            The rule is not in the agent's code, where a compromised agent could skip it. It
+            is in the treasury account's key list, which Hedera evaluates at consensus for
+            every transaction that spends from the account.
+          </p>
+        </div>
+        <div class="split">
+          <pre class="tree" aria-label="The treasury key tree"><code>treasury 0.0.10502365
+1-of[
+  ownerKey,
+  2-of[ agentKey, guardKey ]
+]</code></pre>
+          <div class="scroll" tabindex="0" role="region" aria-label="Which signer sets can move the treasury">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Who signs</th>
+                  <th scope="col">Branch satisfied</th>
+                  <th scope="col">What Hedera does</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th scope="row">Owner alone</th>
+                  <td>First member of the 1-of</td>
+                  <td>Executes. The owner can always recover funds without the guard.</td>
+                </tr>
+                <tr>
+                  <th scope="row">Agent alone</th>
+                  <td>Neither: the 2-of is half complete</td>
+                  <td>A scheduled transfer waits unexecuted. A direct transfer is rejected with <code>INVALID_SIGNATURE</code>.</td>
+                </tr>
+                <tr>
+                  <th scope="row">Guard alone</th>
+                  <td>Neither</td>
+                  <td>Nothing. The guard cannot move the funds it protects.</td>
+                </tr>
+                <tr>
+                  <th scope="row">Agent and guard</th>
+                  <td>Second member of the 1-of</td>
+                  <td>Executes.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <p style="margin-top:1.5rem">
+          The deployed host holds exactly one private key, the guard's. The owner and agent
+          keys never leave the caller's machine, which is also why the guard cannot spend the
+          treasury on its own.
+        </p>
+      </section>
+
+      <section class="section" aria-labelledby="review-title">
+        <div class="section-head">
+          <h2 id="review-title">One review, in order</h2>
+          <p>
+            The schedule path, as it ran on testnet. Prices and endpoints are read from the
+            live service and dated; they are configuration, not constants.
+          </p>
+        </div>
+        <ol class="steps">
+          <li>
+            <div>
+              <h3>The agent publishes what it wants to do</h3>
+              <p>
+                It submits the transfer as a Hedera Scheduled Transaction carrying only its
+                own signature. The schedule is public and unexecuted, and its memo is the
+                SHA-256 digest of the owner-signed mandate it claims to satisfy.
+              </p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <h3>The caller asks for a review and gets a price</h3>
+              <p>
+                <code>POST /review</code> answers <code>402 Payment Required</code>. On
+                2026-09-12 the agent card at <code>/.well-known/agent.json</code> quoted
+                1,000,000 tinybars on <code>hedera:testnet</code>, exact scheme, paid up
+                front. There is no metering after the fact.
+              </p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <h3>The fee settles before any work is done</h3>
+              <p>
+                Payment goes through the Blocky402 x402 facilitator from an account that holds
+                none of the treasury's keys. The guard refuses at startup if its fee
+                destination is the treasury, the owner, the agent or itself.
+              </p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <h3>The guard reads consensus, not the caller</h3>
+              <p>
+                It resolves the ScheduleID from a Hedera consensus node and never trusts a
+                summary sent with the request. It reads the node's protobuf and services
+                versions before and after, and refuses on any mismatch with its reviewed
+                allowlist, so a schema change fails closed instead of approving a field it
+                cannot see.
+              </p>
+              <p>
+                Every decoded field is then checked against the mandate: recipient allowlist,
+                amount cap, HBAR-only asset, exact fee, memo binding, expiry, creator, payer,
+                the agent's signature present and the guard's absent.
+              </p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <h3>Approve or refuse. The fee is kept either way.</h3>
+              <div class="fork">
+                <div>
+                  <span class="tag tag-approved">Approved</span>
+                  <p>Every check passed. The guard submits <code>ScheduleSign</code>, the 2-of branch completes, and Hedera executes the transfer.</p>
+                </div>
+                <div>
+                  <span class="tag tag-refused">Refused</span>
+                  <p>One check failed. The guard signs nothing. The schedule sits unexecuted until it expires, and the treasury balance does not move.</p>
+                </div>
+              </div>
+            </div>
+          </li>
+          <li>
+            <div>
+              <h3>The verdict is written where you can read it</h3>
+              <p>
+                Approved or refused, a compact record naming the ScheduleID, mandate digest,
+                x402 settlement and both participants' HCS-14 identifiers is published to an
+                immutable Consensus Service topic, and the HTTP response links to it.
+              </p>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="section" id="live-pairs" aria-labelledby="pairs-title">
+        <div class="section-head">
+          <h2 id="pairs-title">Two live pairs, read from the ledger</h2>
+          <div>
+            <p>
+              The schedule path has 10 recorded reviews in
+              <a href="./evidence.json">evidence.json</a>, 5 approved and 5 refused, all made by
+              the operator from a separate machine against the public endpoint. The pair below
+              is one of them. The buyer path has 2 recorded runs on topic 0.0.10507040, 1
+              approved and 1 refused. The two sets are counted separately and never summed.
+            </p>
+            <p>
+              Every cell links to the public mirror node. The
+              <a href="./evidence.html">evidence page</a> re-fetches every recorded schedule in
+              your browser, and the <a href="./replay.html">replay page</a> walks through one
+              recorded review check by check.
+            </p>
+          </div>
+        </div>
+        <div class="scroll" tabindex="0" role="region" aria-label="Schedule path: one approved and one refused review">
+          <table>
+            <caption>Schedule path, 2026-09-12 &middot; POST /review</caption>
+            <thead>
+              <tr>
+                <th scope="col"></th>
+                <th scope="col"><span class="tag tag-approved">Approved</span></th>
+                <th scope="col"><span class="tag tag-refused">Refused</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">Schedule</th>
+                <td><a class="mono" href="https://testnet.mirrornode.hedera.com/api/v1/schedules/0.0.10502591" rel="noreferrer">0.0.10502591</a></td>
+                <td><a class="mono" href="https://testnet.mirrornode.hedera.com/api/v1/schedules/0.0.10502603" rel="noreferrer">0.0.10502603</a></td>
+              </tr>
+              <tr>
+                <th scope="row">executed_timestamp</th>
+                <td class="approved"><span class="mono">1789222019.139668105</span></td>
+                <td class="refused"><span class="mono">null</span></td>
+              </tr>
+              <tr>
+                <th scope="row">Signer prefixes</th>
+                <td>agent <span class="mono">a357ff06&hellip;</span> and guard <span class="mono">41510f63&hellip;</span></td>
+                <td>agent <span class="mono">a357ff06&hellip;</span> only</td>
+              </tr>
+              <tr>
+                <th scope="row">Treasury 0.0.10502365</th>
+                <td>debited exactly 25,000,000 tinybars, the mandated amount, to <span class="mono">0.0.10499022</span></td>
+                <td>unchanged</td>
+              </tr>
+              <tr>
+                <th scope="row">Review fee, x402</th>
+                <td><a class="mono" href="https://testnet.mirrornode.hedera.com/api/v1/transactions/0.0.7162784-1789222008-274977091" rel="noreferrer">0.0.7162784@1789222008.274977091</a><br />1,000,000 tinybars, SUCCESS</td>
+                <td><a class="mono" href="https://testnet.mirrornode.hedera.com/api/v1/transactions/0.0.7162784-1789222049-843720974" rel="noreferrer">0.0.7162784@1789222049.843720974</a><br />1,000,000 tinybars, SUCCESS</td>
+              </tr>
+              <tr>
+                <th scope="row">Verdict record</th>
+                <td><a href="https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10502545/messages/1" rel="noreferrer">topic 0.0.10502545, message 1</a></td>
+                <td><a href="https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10502545/messages/2" rel="noreferrer">topic 0.0.10502545, message 2</a></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="scroll" tabindex="0" role="region" aria-label="Buyer path: one approved and one refused purchase" style="margin-top:1.5rem">
+          <table>
+            <caption>Buyer path, 2026-09-12 &middot; POST /countersign &middot; the seller is operated by us with stock x402 libraries</caption>
+            <thead>
+              <tr>
+                <th scope="col"></th>
+                <th scope="col"><span class="tag tag-approved">Approved</span></th>
+                <th scope="col"><span class="tag tag-refused">Refused</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">Purchase transaction</th>
+                <td><a class="mono" href="https://testnet.mirrornode.hedera.com/api/v1/transactions/0.0.7162784-1789236680-893311588" rel="noreferrer">0.0.7162784@1789236680.893311588</a></td>
+                <td><span class="mono">0.0.7162784@1789236689.722110503</span><br />never reached consensus: the mirror node returns HTTP 404</td>
+              </tr>
+              <tr>
+                <th scope="row">Treasury 0.0.10502365</th>
+                <td class="approved">debited 1,000,000 tinybars to the seller <span class="mono">0.0.10499022</span></td>
+                <td class="refused">unchanged</td>
+              </tr>
+              <tr>
+                <th scope="row">Network fee</th>
+                <td>401,690 tinybars, paid by the facilitator account <span class="mono">0.0.7162784</span>, not the treasury</td>
+                <td>none</td>
+              </tr>
+              <tr>
+                <th scope="row">Review fee, x402</th>
+                <td><a class="mono" href="https://testnet.mirrornode.hedera.com/api/v1/transactions/0.0.7162784-1789236680-457227992" rel="noreferrer">0.0.7162784@1789236680.457227992</a><br />1,000,000 tinybars, SUCCESS</td>
+                <td><a class="mono" href="https://testnet.mirrornode.hedera.com/api/v1/transactions/0.0.7162784-1789236687-605572932" rel="noreferrer">0.0.7162784@1789236687.605572932</a><br />1,000,000 tinybars, SUCCESS</td>
+              </tr>
+              <tr>
+                <th scope="row">Verdict record</th>
+                <td><a href="https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10507040/messages/1" rel="noreferrer">topic 0.0.10507040, message 1</a></td>
+                <td><a href="https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10507040/messages/2" rel="noreferrer">topic 0.0.10507040, message 2</a></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="not-title">
+        <div class="section-head">
+          <h2 id="not-title">What this is not</h2>
+          <div>
+            <p>
+              It is not on mainnet. Every account, schedule, payment and verdict above is on
+              Hedera testnet. It has no users: all 10 schedule-path reviews and both buyer-path
+              runs were made by the operator. The demonstration seller is ours, running stock
+              x402 libraries; no external merchant and no customer exist. The deployed guard
+              serves one treasury, enrolled by the operator, and it is listed in no directory.
+            </p>
+            <p>
+              The full list, with what would have to change for each, is on the
+              <a href="./limitations.html">limitations page</a>.
+            </p>
+          </div>
+        </div>
+      </section>
+    </main>
+    <footer class="site-foot">
+      <div class="wrap">
+        <div class="foot-grid">
+          <section aria-labelledby="foot-live">
+            <h2 id="foot-live">Live surfaces</h2>
+            <ul>
+              <li><a href="https://countersign.gudman.xyz/guard" rel="noreferrer">GET /guard</a> &mdash; key and identifier, unpaid</li>
+              <li><a href="https://countersign.gudman.xyz/.well-known/agent.json" rel="noreferrer">GET /.well-known/agent.json</a> &mdash; agent card, unpaid</li>
+              <li><a href="./evidence.html">Evidence</a> &mdash; every recorded schedule, checked in your browser</li>
+              <li><a href="./replay.html">Replay</a> &mdash; a recorded review, step by step</li>
+            </ul>
+          </section>
+          <section aria-labelledby="foot-read">
+            <h2 id="foot-read">Read</h2>
+            <ul>
+              <li><a href="./how-it-works.html">How it works</a></li>
+              <li><a href="./developers.html">For developers</a></li>
+              <li><a href="./limitations.html">Limitations</a></li>
+              <li><a href="https://github.com/Ridwannurudeen/countersign-ethonline2026" rel="noreferrer">Source on GitHub</a></li>
+              <li><a href="https://github.com/Ridwannurudeen/countersign-ethonline2026/blob/main/THREAT_MODEL.md" rel="noreferrer">Threat model</a></li>
+            </ul>
+          </section>
+          <section aria-labelledby="foot-ledger">
+            <h2 id="foot-ledger">On the ledger</h2>
+            <ul>
+              <li><a href="https://testnet.mirrornode.hedera.com/api/v1/accounts/0.0.10502365" rel="noreferrer">Treasury 0.0.10502365</a></li>
+              <li><a href="https://testnet.mirrornode.hedera.com/api/v1/accounts/0.0.10502367" rel="noreferrer">Agent 0.0.10502367</a></li>
+              <li><a href="https://testnet.mirrornode.hedera.com/api/v1/accounts/0.0.10502369" rel="noreferrer">Guard 0.0.10502369</a></li>
+              <li><a href="https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10502545/messages" rel="noreferrer">Verdict topic 0.0.10502545</a></li>
+              <li><a href="https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10507040/messages" rel="noreferrer">Verdict topic 0.0.10507040</a></li>
+            </ul>
+          </section>
+        </div>
+        <div class="colophon">
+          <p>Countersign is an ETHOnline 2026 entry, Hedera testnet only. Every recorded run is an operator-run reliability exercise, not a user; every testnet payment is a paid protocol trial, not revenue. No combined activity total is reported.</p>
+          <p>Hand-written HTML and CSS, no build step, no scripts on this page.</p>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,941 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Countersign limitations</title>
+    <meta name="description" content="What Countersign does not do today, with what would have to change for each limit." />
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #172019;
+        --muted: #4d574f;
+        --canvas: #f4f1e8;
+        --surface: #fffcf4;
+        --sunk: #ebe7dc;
+        --line: #b8b4a8;
+        --line-strong: #687269;
+        --green: #145c43;
+        --green-soft: #dcebe3;
+        --red: #8b2d27;
+        --red-soft: #f8e9e5;
+        --panel: #172019;
+        --panel-text: #f4f1e8;
+        --panel-dim: #c9c4b6;
+        --panel-green: #8fd0b4;
+        --panel-red: #f0a79f;
+        --serif: Charter, "Bitstream Charter", "Iowan Old Style", Georgia, "Times New Roman", serif;
+        --mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+        --measure: 40rem;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        font-family: var(--serif);
+        font-size: 106.25%;
+        line-height: 1.55;
+        color: var(--ink);
+        background: var(--canvas);
+        -webkit-text-size-adjust: 100%;
+      }
+
+      body {
+        min-height: 100vh;
+        margin: 0;
+      }
+
+      body::before {
+        display: block;
+        height: 0.4rem;
+        background: var(--green);
+        content: "";
+      }
+
+      .wrap {
+        width: min(72rem, 100% - 2.5rem);
+        margin-inline: auto;
+      }
+
+      .skip-link {
+        position: fixed;
+        top: 0.75rem;
+        left: 0.75rem;
+        z-index: 4;
+        transform: translateY(-180%);
+        padding: 0.7rem 0.9rem;
+        font-family: var(--mono);
+        font-size: 0.8rem;
+        color: var(--panel-text);
+        background: var(--green);
+      }
+
+      .skip-link:focus {
+        transform: translateY(0);
+      }
+
+      /* ---- header ---- */
+
+      .site-head {
+        border-bottom: 1px solid var(--line);
+      }
+
+      .head-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 1rem 2rem;
+        padding: 1.1rem 0 0.9rem;
+      }
+
+      .brand {
+        display: grid;
+        gap: 0.05rem;
+        color: var(--ink);
+        text-decoration: none;
+      }
+
+      .brand-name {
+        font-size: 1.4rem;
+        font-weight: 400;
+        letter-spacing: -0.02em;
+        line-height: 1;
+      }
+
+      .brand-sub {
+        font-family: var(--mono);
+        font-size: 0.68rem;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+      }
+
+      .site-nav ul {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem 1.35rem;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .site-nav a {
+        display: inline-block;
+        padding: 0.2rem 0;
+        font-family: var(--mono);
+        font-size: 0.74rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+        text-decoration: none;
+        border-bottom: 1px solid transparent;
+      }
+
+      .site-nav a:hover {
+        color: var(--ink);
+      }
+
+      .site-nav a[aria-current="page"] {
+        color: var(--ink);
+        border-bottom-color: var(--ink);
+      }
+
+      /* ---- type ---- */
+
+      h1,
+      h2,
+      h3,
+      p,
+      ul,
+      ol,
+      dl,
+      pre,
+      figure,
+      table {
+        margin-top: 0;
+      }
+
+      h1 {
+        max-width: 15ch;
+        margin-bottom: 1.25rem;
+        font-size: clamp(2.5rem, 7.5vw, 5rem);
+        font-weight: 400;
+        letter-spacing: -0.03em;
+        line-height: 0.98;
+        text-wrap: balance;
+      }
+
+      h1 em {
+        font-style: italic;
+        color: var(--green);
+      }
+
+      h2 {
+        max-width: 24ch;
+        margin-bottom: 1rem;
+        font-size: clamp(1.7rem, 3.4vw, 2.5rem);
+        font-weight: 400;
+        letter-spacing: -0.025em;
+        line-height: 1.08;
+        text-wrap: balance;
+      }
+
+      h3 {
+        margin-bottom: 0.5rem;
+        font-size: 1.2rem;
+        font-weight: 400;
+        letter-spacing: -0.01em;
+      }
+
+      p,
+      li {
+        max-width: var(--measure);
+      }
+
+      .lede {
+        font-size: 1.2rem;
+        line-height: 1.5;
+        max-width: 34rem;
+      }
+
+      .eyebrow,
+      .label,
+      .tag,
+      .qualifier,
+      th,
+      dt,
+      .steps li::before,
+      figcaption,
+      caption {
+        font-family: var(--mono);
+        font-size: 0.74rem;
+        font-weight: 400;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .eyebrow {
+        margin-bottom: 1.5rem;
+        color: var(--green);
+      }
+
+      .qualifier {
+        margin-top: 1.5rem;
+        color: var(--muted);
+        text-transform: none;
+        letter-spacing: 0.02em;
+        font-size: 0.8rem;
+      }
+
+      code,
+      pre,
+      .mono {
+        font-family: var(--mono);
+        font-size: 0.86em;
+      }
+
+      code {
+        overflow-wrap: anywhere;
+      }
+
+      pre {
+        overflow-x: auto;
+        padding: 1rem 1.15rem;
+        border: 1px solid var(--line);
+        background: var(--surface);
+        line-height: 1.5;
+        font-size: 0.82rem;
+      }
+
+      pre code {
+        font-size: inherit;
+      }
+
+      a {
+        color: var(--ink);
+        overflow-wrap: anywhere;
+        text-decoration: underline;
+        text-decoration-color: var(--line-strong);
+        text-decoration-thickness: 1px;
+        text-underline-offset: 0.2em;
+        transition: text-decoration-color 150ms ease-out, color 150ms ease-out;
+      }
+
+      a:hover {
+        color: var(--green);
+        text-decoration-color: var(--green);
+      }
+
+      :focus-visible {
+        outline: 2px solid var(--green);
+        outline-offset: 3px;
+      }
+
+      .tag {
+        display: inline-block;
+        padding: 0.15rem 0.5rem;
+        border: 1px solid currentColor;
+      }
+
+      .tag-approved {
+        color: var(--green);
+        background: var(--green-soft);
+      }
+
+      .tag-refused {
+        color: var(--red);
+        background: var(--red-soft);
+      }
+
+      /* ---- sections ---- */
+
+      main {
+        padding-bottom: 3rem;
+      }
+
+      .section {
+        padding: 4.5rem 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .section:last-of-type {
+        border-bottom: 0;
+      }
+
+      .section-head {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr);
+        gap: 1.5rem 3rem;
+        align-items: start;
+        margin-bottom: 2.25rem;
+      }
+
+      .section-head h2 {
+        margin-bottom: 0;
+      }
+
+      .section-head p:last-child {
+        margin-bottom: 0;
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1.15fr) minmax(18rem, 0.85fr);
+        gap: 3rem 4rem;
+        align-items: start;
+        padding: 3.5rem 0 4.5rem;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .page-hero {
+        padding: 4.5rem 0 3.5rem;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        margin-top: 1.75rem;
+      }
+
+      .btn {
+        display: inline-block;
+        padding: 0.7rem 1.1rem;
+        border: 1px solid var(--ink);
+        font-family: var(--mono);
+        font-size: 0.78rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        text-decoration: none;
+        color: var(--ink);
+        background: transparent;
+        transition: background-color 150ms ease-out, color 150ms ease-out, border-color 150ms ease-out;
+      }
+
+      .btn:hover {
+        color: var(--ink);
+        background: var(--sunk);
+      }
+
+      .btn-primary {
+        color: var(--panel-text);
+        background: var(--ink);
+      }
+
+      .btn-primary:hover {
+        color: var(--panel-text);
+        border-color: var(--green);
+        background: var(--green);
+      }
+
+      /* ---- ledger panel (dark) ---- */
+
+      .ledger {
+        margin: 0;
+        padding: 1.4rem 1.5rem 1.5rem;
+        color: var(--panel-text);
+        background: var(--panel);
+      }
+
+      .ledger figcaption {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.6rem;
+        margin-bottom: 1.25rem;
+        color: var(--panel-dim);
+      }
+
+      .ledger .tag-refused {
+        color: var(--panel-red);
+        background: transparent;
+      }
+
+      .ledger .tag-approved {
+        color: var(--panel-green);
+        background: transparent;
+      }
+
+      .fields {
+        display: grid;
+        gap: 0.55rem;
+        margin: 0;
+      }
+
+      .fields > div {
+        display: grid;
+        grid-template-columns: minmax(9rem, 12rem) minmax(0, 1fr);
+        gap: 0.25rem 1rem;
+        padding-bottom: 0.55rem;
+        border-bottom: 1px solid rgba(244, 241, 232, 0.18);
+      }
+
+      .fields > div:last-child {
+        border-bottom: 0;
+      }
+
+      .fields dt {
+        color: var(--panel-dim);
+        text-transform: none;
+        letter-spacing: 0.02em;
+        font-size: 0.8rem;
+      }
+
+      .fields dd {
+        margin: 0;
+        font-family: var(--mono);
+        font-size: 0.86rem;
+        overflow-wrap: anywhere;
+      }
+
+      .fields .absent {
+        color: var(--panel-red);
+      }
+
+      .ledger p {
+        max-width: none;
+        margin: 1.25rem 0 0;
+        font-family: var(--mono);
+        font-size: 0.78rem;
+        line-height: 1.6;
+        color: var(--panel-dim);
+      }
+
+      .ledger a {
+        color: var(--panel-text);
+        text-decoration-color: var(--panel-dim);
+      }
+
+      .ledger a:hover {
+        color: var(--panel-green);
+        text-decoration-color: var(--panel-green);
+      }
+
+      .ledger :focus-visible {
+        outline-color: var(--panel-green);
+      }
+
+      /* ---- tables ---- */
+
+      .scroll {
+        overflow-x: auto;
+        border: 1px solid var(--line);
+        background: var(--surface);
+      }
+
+      .scroll:focus-visible {
+        outline-offset: 0;
+      }
+
+      table {
+        width: 100%;
+        min-width: 36rem;
+        border-collapse: collapse;
+        font-size: 0.95rem;
+      }
+
+      caption {
+        padding: 0.8rem 1rem;
+        text-align: left;
+        color: var(--muted);
+        border-bottom: 1px solid var(--line);
+      }
+
+      th,
+      td {
+        padding: 0.7rem 1rem;
+        text-align: left;
+        vertical-align: top;
+        border-bottom: 1px solid var(--line);
+      }
+
+      th {
+        color: var(--muted);
+      }
+
+      thead th {
+        border-bottom: 1px solid var(--line-strong);
+      }
+
+      tbody th {
+        width: 12rem;
+        text-transform: none;
+        letter-spacing: 0.02em;
+        font-size: 0.8rem;
+      }
+
+      tbody tr:last-child th,
+      tbody tr:last-child td {
+        border-bottom: 0;
+      }
+
+      td.approved {
+        color: var(--green);
+      }
+
+      td.refused {
+        color: var(--red);
+      }
+
+      td .mono {
+        overflow-wrap: anywhere;
+      }
+
+      /* ---- key tree + state ledger ---- */
+
+      .split {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+        gap: 2rem 3rem;
+        align-items: start;
+      }
+
+      .tree {
+        margin: 0;
+        font-size: 0.95rem;
+      }
+
+      /* ---- steps (timeline) ---- */
+
+      .steps {
+        counter-reset: step;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        border-top: 1px solid var(--line);
+      }
+
+      .steps li {
+        position: relative;
+        max-width: none;
+        display: grid;
+        grid-template-columns: 4.5rem minmax(0, 1fr);
+        gap: 0.5rem 1.5rem;
+        padding: 1.25rem 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .steps li::before {
+        counter-increment: step;
+        content: counter(step, decimal-leading-zero);
+        padding-top: 0.2rem;
+        font-size: 0.9rem;
+        color: var(--muted);
+      }
+
+      .steps h3 {
+        margin-bottom: 0.35rem;
+      }
+
+      .steps p {
+        margin-bottom: 0.5rem;
+      }
+
+      .steps p:last-child {
+        margin-bottom: 0;
+      }
+
+      .fork {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 1rem;
+        margin-top: 0.5rem;
+      }
+
+      .fork > div {
+        padding: 0.9rem 1rem;
+        border: 1px solid var(--line);
+        background: var(--surface);
+      }
+
+      .fork .tag {
+        margin-bottom: 0.5rem;
+      }
+
+      .fork p {
+        margin: 0;
+        font-size: 0.95rem;
+      }
+
+      /* ---- definition rows ---- */
+
+      .rows {
+        margin: 0;
+        border-top: 1px solid var(--line);
+      }
+
+      .rows > div {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 2.2fr);
+        gap: 0.5rem 2rem;
+        padding: 1.1rem 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .rows dt {
+        text-transform: none;
+        letter-spacing: 0.02em;
+        font-size: 0.82rem;
+        color: var(--muted);
+        overflow-wrap: anywhere;
+      }
+
+      .rows dd {
+        margin: 0;
+        max-width: var(--measure);
+      }
+
+      .rows dd p:last-child {
+        margin-bottom: 0;
+      }
+
+      /* ---- limits list ---- */
+
+      .limits {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        counter-reset: limit;
+        border-top: 1px solid var(--line);
+      }
+
+      .limits li {
+        display: grid;
+        grid-template-columns: 3rem minmax(0, 1fr);
+        gap: 0.5rem 1.5rem;
+        max-width: none;
+        padding: 1.4rem 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .limits li::before {
+        counter-increment: limit;
+        content: counter(limit, decimal-leading-zero);
+        padding-top: 0.25rem;
+        font-family: var(--mono);
+        font-size: 0.9rem;
+        color: var(--muted);
+      }
+
+      .limits h3 {
+        margin-bottom: 0.4rem;
+      }
+
+      .limits p {
+        margin-bottom: 0.6rem;
+      }
+
+      .limits p:last-child {
+        margin-bottom: 0;
+      }
+
+      .next {
+        font-size: 0.92rem;
+        color: var(--muted);
+      }
+
+      .next strong {
+        font-weight: 400;
+        font-family: var(--mono);
+        font-size: 0.74rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      /* ---- footer ---- */
+
+      .site-foot {
+        padding: 2.5rem 0 3rem;
+        border-top: 1px solid var(--line);
+        font-size: 0.92rem;
+        color: var(--muted);
+      }
+
+      .foot-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 2rem;
+      }
+
+      .foot-grid h2 {
+        margin-bottom: 0.6rem;
+        font-family: var(--mono);
+        font-size: 0.74rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .foot-grid ul {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .foot-grid li {
+        margin-bottom: 0.3rem;
+      }
+
+      .foot-grid a {
+        color: var(--ink);
+      }
+
+      .colophon {
+        margin-top: 2.5rem;
+        padding-top: 1.25rem;
+        border-top: 1px solid var(--line);
+      }
+
+      .colophon p {
+        margin: 0 0 0.4rem;
+        max-width: none;
+      }
+
+      /* ---- responsive ---- */
+
+      @media (max-width: 60rem) {
+        .hero,
+        .section-head,
+        .split {
+          grid-template-columns: minmax(0, 1fr);
+        }
+
+        .hero {
+          padding-top: 3.5rem;
+        }
+      }
+
+      @media (max-width: 42rem) {
+        .foot-grid,
+        .fork,
+        .rows > div {
+          grid-template-columns: minmax(0, 1fr);
+        }
+
+        .steps li,
+        .limits li {
+          grid-template-columns: 2.5rem minmax(0, 1fr);
+          gap: 0.4rem 0.9rem;
+        }
+
+        .fields > div {
+          grid-template-columns: minmax(0, 1fr);
+          gap: 0.15rem;
+        }
+
+        .section {
+          padding: 3rem 0;
+        }
+
+        .page-hero {
+          padding: 3rem 0 2.5rem;
+        }
+
+        .lede {
+          font-size: 1.08rem;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          transition: none !important;
+          animation: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-head">
+      <div class="wrap head-row">
+        <a class="brand" href="./index.html">
+          <span class="brand-name">Countersign</span>
+          <span class="brand-sub">guard 0.0.10502369 &middot; hedera:testnet</span>
+        </a>
+        <nav class="site-nav" aria-label="Site">
+          <ul>
+            <li><a href="./index.html">Overview</a></li>
+            <li><a href="./how-it-works.html">How it works</a></li>
+            <li><a href="./developers.html">Developers</a></li>
+            <li><a href="./limitations.html" aria-current="page">Limitations</a></li>
+            <li><a href="./evidence.html">Evidence</a></li>
+            <li><a href="./replay.html">Replay</a></li>
+            <li><a href="https://github.com/Ridwannurudeen/countersign-ethonline2026" rel="noreferrer">Source</a></li>
+          </ul>
+        </nav>
+      </div>
+    </header>
+    <main id="main" class="wrap">
+      <section class="page-hero" aria-labelledby="limits-title">
+        <p class="eyebrow">Limitations</p>
+        <h1 id="limits-title">What Countersign does not do, stated where it matters.</h1>
+        <p class="lede">
+          Each limit below is real today, and each names what would have to be true for it to
+          stop being one. A page that hides its limits is making a weaker claim about
+          everything else on it.
+        </p>
+      </section>
+
+      <section class="section" aria-labelledby="list-title">
+        <h2 id="list-title" class="eyebrow" style="max-width:none">Fourteen limits, 2026-09-12</h2>
+        <ol class="limits">
+          <li><div>
+            <h3>Testnet only</h3>
+            <p>Every account, schedule, payment and verdict is on <code>hedera:testnet</code>. Nothing has been deployed to mainnet and no mainnet HBAR has been at stake.</p>
+            <p class="next"><strong>Next</strong> a mainnet treasury, a mainnet facilitator, and a re-review of the pinned network versions against mainnet.</p>
+          </div></li>
+          <li><div>
+            <h3>No users</h3>
+            <p><a href="./evidence.json">evidence.json</a> records 10 schedule-path reviews, 5 approved and 5 refused, every one with origin <code>operator</code> and zero external. The buyer path has 2 operator runs. These are reliability exercises, not adoption, and the testnet fees paid are protocol trials, not revenue.</p>
+            <p class="next"><strong>Next</strong> a review paid by a party that does not hold the operator's keys, which the manifest would show as an external record.</p>
+          </div></li>
+          <li><div>
+            <h3>The seller is ours</h3>
+            <p>The buyer-path purchase went to a seller we operate with stock x402 libraries. No external merchant sold anything and no customer bought anything.</p>
+            <p class="next"><strong>Next</strong> a purchase from a Hedera x402 seller we do not run.</p>
+          </div></li>
+          <li><div>
+            <h3>Listed in no directory</h3>
+            <p>The caller resolves the guard from a configured origin and an expected HCS-14 identifier. Nothing else can find it, and an identifier match is not cryptographic proof that the host controls the guard key.</p>
+            <p class="next"><strong>Next</strong> a challenge-response over the guard key at resolution time, and a listing the owner chooses.</p>
+          </div></li>
+          <li><div>
+            <h3>One tenant, enrolled by hand</h3>
+            <p>The code can serve several tenants, but the deployed instance serves one treasury, and every tenant is written into the guard's configuration by the operator. There is no self-enrollment endpoint. This is not a marketplace.</p>
+            <p class="next"><strong>Next</strong> an enrollment path the owner can complete without the operator, with its own review.</p>
+          </div></li>
+          <li><div>
+            <h3>HBAR only; HTS is refused</h3>
+            <p>A mandate may name a fungible HTS token and will parse and verify, but every token proposal is refused at review because consensus token fee state is not verified yet. Structurally valid HTS proposals fail at the custom-fee check.</p>
+            <p class="next"><strong>Next</strong> resolving the token's fee schedule from consensus and reviewing it the way the HBAR body is reviewed.</p>
+          </div></li>
+          <li><div>
+            <h3>On the schedule path the guard approves a ScheduleID, not bytes</h3>
+            <p><code>ScheduleSign</code> authorizes the immutable schedule the guard resolved from consensus. The guard never signs the scheduled transaction's bytes. On the buyer path it does countersign the exact bytes it validated. The two are different guarantees and the <a href="./how-it-works.html">how-it-works page</a> keeps them apart.</p>
+            <p class="next"><strong>Next</strong> nothing to fix; the point is not to describe one path in the other's words.</p>
+          </div></li>
+          <li><div>
+            <h3>One mandate per approval</h3>
+            <p>Mandates are single-use. A treasury that makes ten transfers needs ten owner-signed mandates with increasing nonces. There is no standing allowance.</p>
+            <p class="next"><strong>Next</strong> a bounded multi-use mandate with a running spend counter, and its replay tests.</p>
+          </div></li>
+          <li><div>
+            <h3>A refusal costs the same as an approval</h3>
+            <p>The review fee settles before any consensus work and is not returned on a refusal. On 2026-09-12 the agent card quoted 1,000,000 tinybars per review. This is a design choice, since the refusal is the delivered service, but a caller should know it before paying.</p>
+            <p class="next"><strong>Next</strong> nothing; it is stated here and in the README so it is not a surprise.</p>
+          </div></li>
+          <li><div>
+            <h3>The price is exact-scheme and fixed per call</h3>
+            <p>Hedera x402 supports only the <code>exact</code> scheme, so the price is one known amount quoted in the 402 challenge. There is no metering, no volume pricing, and the amount is operator configuration that can change.</p>
+            <p class="next"><strong>Next</strong> a scheme change upstream, which this project does not control.</p>
+          </div></li>
+          <li><div>
+            <h3>One process on one host</h3>
+            <p>The guard runs as a single systemd service behind nginx with a file-backed SQLite database for nonce reservations. Lock contention is bounded and surfaces as a retryable 503. There is no replica, no failover and no uptime commitment.</p>
+            <p class="next"><strong>Next</strong> a second instance sharing reservation state without weakening single-use.</p>
+          </div></li>
+          <li><div>
+            <h3>A network upgrade stops all approvals</h3>
+            <p>The guard refuses every review whose consensus node reports protobuf or services versions outside its reviewed allowlist. When Hedera upgrades, the guard refuses everything until a person re-reviews the schema. Fail-closed by design, but a real outage window.</p>
+            <p class="next"><strong>Next</strong> a documented re-review procedure with a time bound.</p>
+          </div></li>
+          <li><div>
+            <h3>The verdict record is the guard's own word; the absence is not</h3>
+            <p>The HCS verdict message is written by the guard and is only as honest as the guard. What does not depend on the guard is the ledger state: an unexecuted schedule with no guard prefix, or a transaction ID the mirror node has never seen. Trust the absence; treat the record as a convenience index into it.</p>
+            <p class="next"><strong>Next</strong> nothing; this is the correct reading of the evidence and the <a href="./evidence.html">evidence page</a> is built on it.</p>
+          </div></li>
+          <li><div>
+            <h3>No independent security audit</h3>
+            <p>The code has been reviewed and mutation-tested internally, and the invariant-to-test map and threat model are published. No third party has audited it. The offline suite is 520 TypeScript and 13 Python tests as of 2026-09-12, and it covers the validator, not the deployment.</p>
+            <p class="next"><strong>Next</strong> an external review of <code>src/review-schedule.ts</code>, <code>src/countersign-transfer.ts</code> and <code>src/payment-gate.ts</code> against <a href="https://github.com/Ridwannurudeen/countersign-ethonline2026/blob/main/THREAT_MODEL.md" rel="noreferrer">the threat model</a>.</p>
+          </div></li>
+        </ol>
+      </section>
+    </main>
+    <footer class="site-foot">
+      <div class="wrap">
+        <div class="foot-grid">
+          <section aria-labelledby="foot-live">
+            <h2 id="foot-live">Live surfaces</h2>
+            <ul>
+              <li><a href="https://countersign.gudman.xyz/guard" rel="noreferrer">GET /guard</a> &mdash; key and identifier, unpaid</li>
+              <li><a href="https://countersign.gudman.xyz/.well-known/agent.json" rel="noreferrer">GET /.well-known/agent.json</a> &mdash; agent card, unpaid</li>
+              <li><a href="./evidence.html">Evidence</a> &mdash; every recorded schedule, checked in your browser</li>
+              <li><a href="./replay.html">Replay</a> &mdash; a recorded review, step by step</li>
+            </ul>
+          </section>
+          <section aria-labelledby="foot-read">
+            <h2 id="foot-read">Read</h2>
+            <ul>
+              <li><a href="./how-it-works.html">How it works</a></li>
+              <li><a href="./developers.html">For developers</a></li>
+              <li><a href="./limitations.html">Limitations</a></li>
+              <li><a href="https://github.com/Ridwannurudeen/countersign-ethonline2026" rel="noreferrer">Source on GitHub</a></li>
+              <li><a href="https://github.com/Ridwannurudeen/countersign-ethonline2026/blob/main/THREAT_MODEL.md" rel="noreferrer">Threat model</a></li>
+            </ul>
+          </section>
+          <section aria-labelledby="foot-ledger">
+            <h2 id="foot-ledger">On the ledger</h2>
+            <ul>
+              <li><a href="https://testnet.mirrornode.hedera.com/api/v1/accounts/0.0.10502365" rel="noreferrer">Treasury 0.0.10502365</a></li>
+              <li><a href="https://testnet.mirrornode.hedera.com/api/v1/accounts/0.0.10502367" rel="noreferrer">Agent 0.0.10502367</a></li>
+              <li><a href="https://testnet.mirrornode.hedera.com/api/v1/accounts/0.0.10502369" rel="noreferrer">Guard 0.0.10502369</a></li>
+              <li><a href="https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10502545/messages" rel="noreferrer">Verdict topic 0.0.10502545</a></li>
+              <li><a href="https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10507040/messages" rel="noreferrer">Verdict topic 0.0.10507040</a></li>
+            </ul>
+          </section>
+        </div>
+        <div class="colophon">
+          <p>Countersign is an ETHOnline 2026 entry, Hedera testnet only. Every recorded run is an operator-run reliability exercise, not a user; every testnet payment is a paid protocol trial, not revenue. No combined activity total is reported.</p>
+          <p>Hand-written HTML and CSS, no build step, no scripts on this page.</p>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>
