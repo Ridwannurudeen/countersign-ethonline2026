@@ -6,7 +6,7 @@ import { Client, PrivateKey, Transaction } from "@hiero-ledger/sdk";
 import { decodePaymentSignatureHeader, encodePaymentRequiredHeader, encodePaymentResponseHeader } from "@x402/core/http";
 import type { PaymentRequired } from "@x402/core/types";
 import { inspectHederaTransaction } from "@x402/hedera";
-import { createSandbox, parseProposal, parseSandboxConfiguration, productionDependencies, type SandboxDependencies } from "../scripts/serve-sandbox.ts";
+import { clientAddress, createSandbox, parseProposal, parseSandboxConfiguration, productionDependencies, type SandboxDependencies } from "../scripts/serve-sandbox.ts";
 import { mandateDigest, type MandateEnvelope } from "../src/mandate.ts";
 
 const proposal = { recipient: "vendor", amountTinybars: "1000000" };
@@ -254,4 +254,15 @@ test("sandbox restart marks interrupted work unknown without retrying it", async
   assert.match(recovered.body.reason!, /unknown/);
   assert.deepEqual(recovered.body.steps.map(step => step.state), ["done", "done", "failed", "never-happened"]);
   assert.equal((await post(restarted)).status, 503);
+});
+
+test("clientAddress keeps the rate limit per visitor behind the reverse proxy", () => {
+  // Behind nginx every socket peer is 127.0.0.1, so the proxy's X-Real-IP is what distinguishes visitors.
+  assert.equal(clientAddress("127.0.0.1", "203.0.113.7"), "203.0.113.7");
+  assert.equal(clientAddress("127.0.0.1", ["203.0.113.7", "198.51.100.4"]), "203.0.113.7");
+  assert.equal(clientAddress("127.0.0.1", "2001:db8::1"), "2001:db8::1");
+  for (const forged of [undefined, "", "not an address", "203.0.113.7 ; rm", "a".repeat(46)]) {
+    assert.equal(clientAddress("127.0.0.1", forged), "127.0.0.1");
+  }
+  assert.equal(clientAddress(undefined, undefined), "unknown");
 });

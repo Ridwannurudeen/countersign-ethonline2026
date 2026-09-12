@@ -186,6 +186,15 @@ export function createSandbox(envelopes: MandateEnvelope[], database: DatabaseSy
   };
 }
 
+// The service binds loopback only, so every peer is the reverse proxy: without the proxy's
+// X-Real-IP the per-address bucket would collapse into one global run per 30 seconds and tell a
+// throttled visitor they were going too fast when someone else had just run.
+export function clientAddress(socketAddress: string | undefined, forwarded: string | string[] | undefined): string {
+  const header = Array.isArray(forwarded) ? forwarded[0] : forwarded;
+  if (header !== undefined && /^[0-9a-fA-F.:]{3,45}$/.test(header)) return header;
+  return socketAddress ?? "unknown";
+}
+
 export function parseSandboxConfiguration(env: NodeJS.ProcessEnv = process.env) {
   function required(name: string) {
     const value = env[name]?.trim();
@@ -289,7 +298,7 @@ async function main() {
   const client = Client.forTestnet().setOperator(config.agent, config.agentKey).setRequestTimeout(30_000).setMaxAttempts(2);
   const sandbox = createSandbox(envelopes, database, productionDependencies(config, client));
   const server = createServer((request, response) => {
-    void sandbox.handle(request.method ?? "", request.url ?? "", request.socket.remoteAddress ?? "unknown",
+    void sandbox.handle(request.method ?? "", request.url ?? "", clientAddress(request.socket.remoteAddress, request.headers["x-real-ip"]),
       request.iterator({ destroyOnReturn: false }) as AsyncIterable<Uint8Array>).then(result => {
       response.writeHead(result.status, { "content-type": "application/json", "cache-control": "no-store", connection: "close" });
       response.end(JSON.stringify(result.body));
