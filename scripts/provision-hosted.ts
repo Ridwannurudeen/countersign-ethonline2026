@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import {
@@ -81,6 +81,19 @@ async function main(): Promise<void> {
     process.env.COUNTERSIGN_PUBLIC_ORIGIN?.trim() ||
     "https://countersign.gudman.xyz";
 
+  // These files are the only record of keys that control funded accounts.
+  // Overwriting them would strand the treasury, so refuse before spending
+  // anything rather than after.
+  const guardEnvPath = resolve("var", "hosted-guard.env");
+  const callerEnvPath = resolve("var", "hosted-caller.env");
+  for (const path of [guardEnvPath, callerEnvPath]) {
+    if (existsSync(path)) {
+      throw new Error(
+        `${path} already exists. Provisioning would replace keys that control funded accounts. Move the existing files aside first.`,
+      );
+    }
+  }
+
   const client = Client.forTestnet().setOperator(
     AccountId.fromString(operatorAccountId),
     operatorPrivateKey,
@@ -156,7 +169,6 @@ async function main(): Promise<void> {
     console.log("\n[3/3] Write the split configuration");
     mkdirSync(resolve("var"), { recursive: true });
 
-    const guardEnvPath = resolve("var", "hosted-guard.env");
     writeFileSync(
       guardEnvPath,
       renderEnvFile({
@@ -178,7 +190,6 @@ async function main(): Promise<void> {
     );
     console.log(`  Guard host configuration: ${guardEnvPath}`);
 
-    const callerEnvPath = resolve("var", "hosted-caller.env");
     writeFileSync(
       callerEnvPath,
       renderEnvFile({
@@ -193,6 +204,7 @@ async function main(): Promise<void> {
         COUNTERSIGN_FEE_ACCOUNT_ID: feeDestinationAccountId.toString(),
         COUNTERSIGN_ALLOWED_RECIPIENT_ACCOUNT_ID: operatorAccountId,
         COUNTERSIGN_GUARD_PUBLIC_KEY_RAW: guardPrivateKey.publicKey.toStringRaw(),
+        COUNTERSIGN_FEE_PRIVATE_KEY: feeDestinationPrivateKey.toStringDer(),
       }),
       { mode: 0o600 },
     );

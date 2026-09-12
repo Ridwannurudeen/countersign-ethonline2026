@@ -175,6 +175,31 @@
       "paymentPayerAccountId": "0.0.10502370",
       "mirrorNodeUrl": "https://testnet.mirrornode.hedera.com/api/v1/schedules/0.0.10502603",
       "paymentPayerMirrorNodeUrl": "https://testnet.mirrornode.hedera.com/api/v1/accounts/0.0.10502370"
+    },
+    {
+      "kind": "review",
+      "guardPublicKeyPrefix": "41510f63ae4cd1e11e9a1147166bbfb749ea0fe784c6aea3a95fb8689ab368e5",
+      "origin": "operator",
+      "scheduleId": "0.0.10502740",
+      "outcome": "refused",
+      "decidingInvariant": "recipient is outside the mandate allowlist",
+      "mandateDigest": "1d19dc4c1a233bc2f0ef97e9fef8cba128085d5f696022ef781271b648a9d5fa",
+      "mandatePolicy": {
+        "asset": {
+          "kind": "hbar"
+        },
+        "recipientAllowlist": [
+          "0.0.10499022"
+        ],
+        "maxAmountTinybars": "50000000",
+        "validFromEpochSeconds": "1789222441",
+        "expiresAtEpochSeconds": "1789226101"
+      },
+      "settlementId": "0.0.7162784@1789222504.389859929",
+      "settlementAmountTinybars": "1000000",
+      "paymentPayerAccountId": "0.0.10502370",
+      "mirrorNodeUrl": "https://testnet.mirrornode.hedera.com/api/v1/schedules/0.0.10502740",
+      "paymentPayerMirrorNodeUrl": "https://testnet.mirrornode.hedera.com/api/v1/accounts/0.0.10502370"
     }
   ],
   "setupTransactions": [],
@@ -186,9 +211,9 @@
       "distinctPayerAccountCount": 0
     },
     "operator": {
-      "reviewCount": 7,
+      "reviewCount": 8,
       "approvalCount": 4,
-      "refusalCount": 3
+      "refusalCount": 4
     }
   }
 }

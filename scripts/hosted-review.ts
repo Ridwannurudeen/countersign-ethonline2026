@@ -168,7 +168,7 @@ async function waitForExecutedScheduleEvidence(
     attempt += 1
   ) {
     await sleep(MIRROR_RETRY_MILLISECONDS);
-    evidence = await fetchScheduleEvidence(scheduleId);
+    evidence = await waitForScheduleEvidence(scheduleId);
   }
 
   return evidence;
@@ -190,7 +190,11 @@ function printScheduleEvidence(evidence: ScheduleEvidence): void {
   );
 }
 
-function requirePaymentQuote(paymentRequired: PaymentRequired, payTo: string) {
+function requirePaymentQuote(
+  paymentRequired: PaymentRequired,
+  payTo: string,
+  payerAccountId: string,
+) {
   if (paymentRequired.accepts.length !== 1) {
     throw new Error("guard must return exactly one x402 payment option");
   }
@@ -203,6 +207,20 @@ function requirePaymentQuote(paymentRequired: PaymentRequired, payTo: string) {
     quote.payTo !== payTo
   ) {
     throw new Error("x402 quote does not match the expected review payment");
+  }
+
+  // The challenge names the account that pays the Hedera transaction fee for the
+  // settlement. An endpoint that names this caller would have it fund the
+  // facilitator's submission as well as the review, so refuse anything but the
+  // facilitator's own fee payer.
+  const feePayer = (quote.extra as { feePayer?: unknown } | undefined)?.feePayer;
+  if (typeof feePayer !== "string" || feePayer === "") {
+    throw new Error("x402 quote must name the facilitator fee payer");
+  }
+  if (feePayer === payerAccountId) {
+    throw new Error(
+      "x402 quote names this caller as the settlement fee payer; refusing",
+    );
   }
 
   return quote;
@@ -347,7 +365,7 @@ async function main(): Promise<void> {
       attempt += 1
     ) {
       await sleep(MIRROR_RETRY_MILLISECONDS);
-      pendingEvidence = await fetchScheduleEvidence(scheduleId);
+      pendingEvidence = await waitForScheduleEvidence(scheduleId);
     }
     assertPendingScheduleEvidence(pendingEvidence, expectedEvidence);
     printScheduleEvidence(pendingEvidence);
@@ -400,7 +418,11 @@ async function main(): Promise<void> {
       (name) => challengeResponse.headers.get(name),
       challengeBody,
     );
-    const quote = requirePaymentQuote(paymentRequired, feeAccountId);
+    const quote = requirePaymentQuote(
+      paymentRequired,
+      feeAccountId,
+      payerAccountId,
+    );
     console.log("  HTTP 402 Payment Required");
     console.log(`  Quote: ${quote.amount} tinybars`);
     console.log(`  Network: ${quote.network}`);
@@ -473,10 +495,13 @@ async function main(): Promise<void> {
       if (reviewResponse.outcome !== "refused") {
         throw new Error("out-of-policy transfer was approved");
       }
+      // A single unexecuted snapshot proves nothing: the mirror node lags, so an
+      // execution that already happened can still read as absent. Re-read after a
+      // delay, and assert the whole refusal shape rather than just the timestamp —
+      // the agent's key must be present and the guard's must not.
+      await sleep(MIRROR_RETRY_MILLISECONDS * 4);
       const refusedEvidence = await waitForScheduleEvidence(scheduleId);
-      if (refusedEvidence.executedTimestamp !== null) {
-        throw new Error("refused schedule executed");
-      }
+      assertPendingScheduleEvidence(refusedEvidence, expectedEvidence);
       if (refusedEvidence.deleted) {
         throw new Error(
           "refused schedule was deleted rather than left unexecuted",
