@@ -42,6 +42,8 @@ const ownerKey = ownerPrivateKey.publicKey;
 const agentPrivateKey = PrivateKey.generateED25519();
 const agentKey = agentPrivateKey.publicKey;
 const guardPrivateKey = PrivateKey.generateED25519();
+// A payer holding none of the treasury authorization keys.
+const unrelatedPrivateKey = PrivateKey.generateED25519();
 const guardKey = guardPrivateKey.publicKey;
 const paymentPayerKey = PrivateKey.generateED25519();
 const paymentPayerAccountId = "0.0.8001";
@@ -303,15 +305,17 @@ test("payment gate refuses a failed up-front settlement", async () => {
     transaction: "",
     network: "hedera:testnet",
   });
-  const requirements = await paymentRequirements(facilitator);
   const gate = await createPaymentGate(baseConfig, facilitator);
-  const paymentPayload: PaymentPayload = {
-    x402Version: 2,
-    accepted: requirements,
-    payload: { transaction: "offline-partially-signed-transaction" },
-  };
+  // A real, decodable payment from an unrelated payer: the gate must let it reach the
+  // facilitator, which then reports the settlement failure. An undecodable payload would
+  // now be refused earlier, so it cannot exercise this path.
+  const paymentHeader = await createPaymentSignatureHeader(
+    facilitator,
+    "0.0.8201",
+    unrelatedPrivateKey,
+  );
 
-  const outcome = await gate.review(encodePaymentSignatureHeader(paymentPayload));
+  const outcome = await gate.review(paymentHeader);
 
   assert.equal(outcome.paid, false);
   if (outcome.paid) {
@@ -319,6 +323,33 @@ test("payment gate refuses a failed up-front settlement", async () => {
   }
   assert.equal(outcome.status, 402);
   assert.equal(facilitator.settled.length, 1);
+});
+
+// A sigPair may legitimately carry a pubKeyPrefix shorter than a full public key, which
+// makes the SDK throw while decoding. If that threw its way past the treasury-identity
+// rule, a caller could skip the rule entirely by trimming one length byte, and the guard
+// would forward the payment for settlement believing no authorization key was involved.
+test("INVARIANT: a payment the guard cannot decode never settles", async (t) => {
+  for (const [name, transaction] of [
+    ["not a transaction", "offline-partially-signed-transaction"],
+    ["truncated bytes", Buffer.from([0x0a, 0x02, 0xff]).toString("base64")],
+  ] as const) {
+    await t.test(name, async () => {
+      const facilitator = new OfflineFacilitator();
+      const requirements = await paymentRequirements(facilitator);
+      const gate = await createPaymentGate(baseConfig, facilitator);
+      const payload: PaymentPayload = {
+        x402Version: 2,
+        accepted: requirements,
+        payload: { transaction },
+      };
+
+      const outcome = await gate.review(encodePaymentSignatureHeader(payload));
+
+      assert.equal(outcome.paid, false);
+      assert.equal(facilitator.settled.length, 0, "undecodable payment must not settle");
+    });
+  }
 });
 
 test("payment gate refuses every treasury authorization signer before settlement", async (t) => {

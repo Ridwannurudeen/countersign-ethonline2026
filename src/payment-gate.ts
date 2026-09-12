@@ -197,8 +197,13 @@ function usesTreasuryAuthorizationIdentity(
         ),
       );
   } catch {
-    // The x402 facilitator below owns malformed-transaction validation.
-    return false;
+    // Fail closed. Returning false here would mean "no treasury identity is involved",
+    // which forwards the payment for settlement. A payload this code cannot decode is
+    // exactly the case where that claim cannot be made: a sigPair may legitimately carry
+    // a pubKeyPrefix shorter than a full public key, which makes the SDK throw, so a
+    // caller could skip this whole rule by trimming one length byte. An undecodable
+    // payment is treated as a treasury identity and never settles.
+    return true;
   }
 }
 
