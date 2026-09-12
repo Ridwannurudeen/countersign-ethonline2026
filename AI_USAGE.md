@@ -12,9 +12,9 @@ OpenAI Codex (`codex-cli` 0.153.2) authored the original source, tests, and scri
 ## Anthropic Claude
 
 Anthropic Claude (Claude Code, Opus 5) acted as briefing, verification, and release engineer for
-the work above. It wrote the task briefs; independently ran the TypeScript typecheck and full test
-suite; and performed mutation checks by temporarily removing invariants and confirming that the
-suite failed.
+the work above. It wrote the task briefs, which are published verbatim in `docs/briefs/`;
+independently ran the TypeScript typecheck and full test suite; and performed mutation checks by
+temporarily removing invariants and confirming that the suite failed.
 
 Claude also authored the following directly, during the 2026-09-12 live testnet session, when a
 defect had to be diagnosed and fixed from live network behaviour:
