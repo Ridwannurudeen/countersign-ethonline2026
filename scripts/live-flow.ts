@@ -41,6 +41,7 @@ import {
   type MandateEnvelope,
 } from "../src/mandate.ts";
 import { createProductionReviewServer } from "../src/server.ts";
+import { countersignTransfer } from "../src/countersign-transfer.ts";
 
 const HEDERA_TESTNET = "hedera:testnet";
 const HBAR_ASSET_ID = "0.0.0";
@@ -597,6 +598,7 @@ export async function runLiveFlow(outcome: LiveFlowOutcome): Promise<void> {
 
     mkdirSync(resolve("var"), { recursive: true });
     server = await createProductionReviewServer(guardClient, {
+      signCountersign: (approval) => countersignTransfer(approval, guardPrivateKey),
       tenants: new Map([[envelope.mandate.tenantId, {
         ownerPublicKey: ownerPrivateKey.publicKey,
         agentPublicKey: agentPrivateKey.publicKey,

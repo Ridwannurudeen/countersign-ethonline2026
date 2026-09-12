@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
-import { mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { connect, type AddressInfo } from "node:net";
 import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import test from "node:test";
+import test, { type TestContext } from "node:test";
 
 import { proto } from "@hiero-ledger/proto";
-import { Client, KeyList, PrivateKey, PublicKey } from "@hiero-ledger/sdk";
+import { AccountId, Client, Hbar, KeyList, PrivateKey, PublicKey, TransactionId, TransferTransaction } from "@hiero-ledger/sdk";
+import { decodePaymentRequiredHeader, encodePaymentSignatureHeader } from "@x402/core/http";
 
 import {
   canonicalMandateBytes,
@@ -19,6 +21,7 @@ import type {
 } from "../src/review-schedule.ts";
 import {
   initializeReplayStore,
+  getMandateReviewState,
   ReplayStoreContentionError,
   reserveMandateReview,
   type CompletedMandateReview,
@@ -32,6 +35,9 @@ import {
   type ReviewServerDependencies,
 } from "../src/server.ts";
 import type { VerdictRecord } from "../src/verdict-log.ts";
+import { countersignTransfer } from "../src/countersign-transfer.ts";
+import { createPaymentGate } from "../src/payment-gate.ts";
+import { openVerdictLog } from "../src/verdict-log.ts";
 import { generateHcs14Aid } from "../src/hcs14.ts";
 
 const ownerKey = PrivateKey.generateED25519();
@@ -158,6 +164,11 @@ function harness(
   const verdicts: VerdictRecord[] = [];
   const completions: CompletedMandateReview[] = [];
   const dependencies: ReviewServerDependencies = {
+    countersign: {
+      protocolMaxFeeTinybars: "100000000",
+      nowEpochSeconds: () => "1788509005",
+      sign: (approval) => countersignTransfer(approval, guardPrivateKey),
+    },
     tenants: new Map([[mandate.tenantId, {
       ownerPublicKey: ownerKey.publicKey,
       agentPublicKey: agentKey,
@@ -221,6 +232,7 @@ async function postReview(
   dependencies: ReviewServerDependencies,
   body: unknown,
   headers: Record<string, string> = {},
+  path = "/review",
 ): Promise<{ response: Response; json: Record<string, unknown> }> {
   const server = createReviewServer(dependencies);
   await new Promise<void>((resolve, reject) => {
@@ -230,7 +242,7 @@ async function postReview(
 
   try {
     const address = server.address() as AddressInfo;
-    const response = await fetch(`http://127.0.0.1:${address.port}/review`, {
+    const response = await fetch(`http://127.0.0.1:${address.port}${path}`, {
       method: "POST",
       headers: { "content-type": "application/json", ...headers },
       body: typeof body === "string" ? body : JSON.stringify(body),
@@ -653,6 +665,7 @@ test("POST /review completes the approved orchestration in order", async () => {
 });
 
 const productionConfig: ProductionReviewServerConfig = {
+  signCountersign: (approval) => countersignTransfer(approval, guardPrivateKey),
   tenants: new Map([[mandate.tenantId, {
     ownerPublicKey: ownerKey.publicKey,
     agentPublicKey: agentKey,
@@ -1399,7 +1412,10 @@ test("GET /.well-known/agent.json publishes the configured public review endpoin
       uaid: generateHcs14Aid(config.guardIdentity),
       guardPublicKey: guardKey.toString(),
       url: config.payment.resourceUrl,
-      service: [{ id: "review", type: "HTTP", serviceEndpoint: config.payment.resourceUrl, method: "POST" }],
+      service: [
+        { id: "review", type: "HTTP", serviceEndpoint: config.payment.resourceUrl, method: "POST" },
+        { id: "countersign", type: "HTTP", serviceEndpoint: "https://public-guard.example:8443/countersign", method: "POST" },
+      ],
       capabilities: {
         extensions: [{
           uri: "https://www.x402.org/",
@@ -1420,4 +1436,237 @@ test("GET /.well-known/agent.json publishes the configured public review endpoin
     client.close();
     rmSync(databasePath, { force: true });
   }
+});
+
+async function countersignHarness(t: TestContext) {
+  const directory = mkdtempSync(resolve("var", "countersign-http-"));
+  const databasePath = resolve(directory, "replay.sqlite");
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  initializeReplayStore(databasePath);
+  const state = harness();
+  state.dependencies.tenants.get(mandate.tenantId)!.agentIdentifier = generateHcs14Aid(productionTenant.agentIdentity);
+  state.dependencies.participantIdentifiers.guard = generateHcs14Aid(productionConfig.guardIdentity);
+  const transaction = await new TransferTransaction()
+    .setTransactionId(TransactionId.fromString("0.0.1001@1788509000.000000000"))
+    .setNodeAccountIds([AccountId.fromString("0.0.3")])
+    .setMaxTransactionFee(Hbar.fromTinybars("100000000"))
+    .addHbarTransfer("0.0.1001", Hbar.fromTinybars(-100))
+    .addHbarTransfer("0.0.1002", Hbar.fromTinybars(100))
+    .freeze().sign(agentPrivateKey);
+  const transactionBase64 = Buffer.from(transaction.toBytes()).toString("base64");
+  const transactionDigest = createHash("sha256").update(transaction.toBytes()).digest("hex");
+  const reservation = { tenantId: mandate.tenantId, nonce: mandate.nonce, mandateDigest: digest, transactionDigest };
+  const messages: Record<string, unknown>[] = [];
+  state.dependencies.reserveNonce = (value) => {
+    state.events.push("reserve");
+    return reserveMandateReview(databasePath, value);
+  };
+  const originalSign = guardPrivateKey.sign.bind(guardPrivateKey);
+  t.mock.method(guardPrivateKey, "sign", (bytes: Uint8Array) => {
+    state.events.push("guard-sign");
+    assert.equal(getMandateReviewState(databasePath, reservation).status, "pending", "nonce must be durably reserved before guard signing");
+    return originalSign(bytes);
+  });
+  state.dependencies.verdictLog = await openVerdictLog({
+    async lookupTopic() {},
+    async createTopic() { return "0.0.9001"; },
+    async submitMessage(_topicId, message) {
+      state.events.push("record");
+      messages.push(JSON.parse(message) as Record<string, unknown>);
+      return messages.length.toString();
+    },
+  });
+  state.dependencies.paymentGate = await createPaymentGate({
+    ...productionConfig.payment,
+    treasuryAuthorizations: [{
+      accountId: mandate.treasuryAccountId,
+      ownerPublicKey: ownerKey.publicKey,
+      agentPublicKey: agentKey,
+      guardPublicKey: guardKey,
+    }],
+  }, {
+    async getSupported() {
+      return {
+        kinds: [{ x402Version: 2, scheme: "exact", network: "hedera:testnet", extra: { feePayer: "0.0.7162784" } }],
+        extensions: [], signers: { "hedera:*": ["0.0.7162784"] },
+      };
+    },
+    async verify() { state.events.push("verify-payment"); return { isValid: true, payer: "0.0.8001" }; },
+    async settle() {
+      state.events.push("settle-payment");
+      return { success: true, payer: "0.0.8001", transaction: "0.0.8001@1788509000.000000001", network: "hedera:testnet" };
+    },
+  });
+  const challenge = await state.dependencies.paymentGate.review(undefined, "/countersign");
+  assert.ok(!challenge.paid);
+  const required = decodePaymentRequiredHeader(challenge.headers["PAYMENT-REQUIRED"]);
+  assert.equal(required.resource?.url, "https://guard.example/countersign");
+  const payer = PrivateKey.generateED25519();
+  const paymentTransaction = await new TransferTransaction()
+    .setTransactionId(TransactionId.fromString("0.0.8001@1788509000.000000001"))
+    .setNodeAccountIds([AccountId.fromString("0.0.3")])
+    .addHbarTransfer("0.0.8001", Hbar.fromTinybars(-1000000))
+    .addHbarTransfer("0.0.9001", Hbar.fromTinybars(1000000))
+    .freeze().sign(payer);
+  const headers = { "payment-signature": encodePaymentSignatureHeader({
+    x402Version: 2, resource: required.resource, accepted: required.accepts[0],
+    payload: { transaction: Buffer.from(paymentTransaction.toBytes()).toString("base64") },
+  }) };
+  const body = { tenantId: mandate.tenantId, mandateEnvelope: signedMandateEnvelope(), transactionBase64 };
+  return { ...state, body, headers, messages, databasePath, reservation };
+}
+
+test("POST /countersign challenges unpaid requests before authorization, reservation or signing", async (t) => {
+  const state = await countersignHarness(t);
+  state.dependencies.reviewObserver = { onReviewCheck() { assert.fail("unpaid authorization"); } };
+  const { response, json } = await postReview(state.dependencies, state.body, {}, "/countersign");
+  assert.equal(response.status, 402);
+  assert.ok(response.headers.get("payment-required"));
+  assert.equal(json.transactionBase64, undefined);
+  assert.deepEqual(state.events, []);
+  assert.deepEqual(state.messages, []);
+});
+
+test("POST /countersign settles, reserves before the real guard signature, and records the reviewed transfer", async (t) => {
+  const state = await countersignHarness(t);
+  const { response, json } = await postReview(state.dependencies, state.body, state.headers, "/countersign");
+  assert.equal(response.status, 200);
+  assert.equal(json.outcome, "approved");
+  assert.ok(response.headers.get("payment-response"));
+  assert.deepEqual(state.events, ["settle-payment", "reserve", "guard-sign", "record"]);
+  assert.equal(json.transactionId, "0.0.1001@1788509000.000000000");
+  assert.equal(json.transactionDigest, state.reservation.transactionDigest);
+  assert.equal(json.mandateDigest, digest);
+  assert.equal(json.mirrorNodeUrl, "https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.9001/messages/1");
+  assert.deepEqual(state.messages[0], {
+    v: 1, outcome: "approved", transactionId: json.transactionId,
+    transactionDigest: json.transactionDigest, mandateDigest: digest,
+    settlementId: json.settlementId, tenantId: mandate.tenantId,
+    participants: { agent: state.dependencies.tenants.get(mandate.tenantId)!.agentIdentifier, guard: state.dependencies.participantIdentifiers.guard },
+  });
+  const original = proto.TransactionList.decode(Buffer.from(state.body.transactionBase64, "base64"));
+  const signed = proto.TransactionList.decode(Buffer.from(json.transactionBase64 as string, "base64"));
+  const before = proto.SignedTransaction.decode(original.transactionList[0].signedTransactionBytes!);
+  const after = proto.SignedTransaction.decode(signed.transactionList[0].signedTransactionBytes!);
+  assert.deepEqual(after.bodyBytes, before.bodyBytes);
+  assert.deepEqual(after.sigMap!.sigPair![0], before.sigMap!.sigPair![0]);
+  assert.equal(after.sigMap!.sigPair!.length, 2);
+  assert.ok(guardKey.verify(after.bodyBytes, after.sigMap!.sigPair![1].ed25519!));
+});
+
+for (const refusal of ["cap", "owner signature", "malformed bytes"] as const) {
+  test(`POST /countersign delivers a paid ${refusal} refusal with independent HCS evidence`, async (t) => {
+    const state = await countersignHarness(t);
+    const body = { ...state.body };
+    const invariant = refusal === "cap" ? "transfer amount is within the mandate cap"
+      : refusal === "owner signature" ? "mandate signature is valid for the configured owner"
+      : "transaction bytes are canonical nonempty base64";
+    if (refusal === "cap") body.mandateEnvelope = signedMandateEnvelope({ ...mandate, maxAmountTinybars: "1" });
+    if (refusal === "owner signature") body.mandateEnvelope = { ...body.mandateEnvelope, signature: Buffer.alloc(64).toString("base64url") };
+    if (refusal === "malformed bytes") body.transactionBase64 = "!";
+    const { response, json } = await postReview(state.dependencies, body, state.headers, "/countersign");
+    assert.equal(response.status, 200);
+    assert.equal(json.outcome, "refused");
+    assert.equal(json.invariant, invariant);
+    assert.equal(json.transactionBase64, undefined);
+    assert.ok(response.headers.get("payment-response"));
+    assert.deepEqual(state.events, ["settle-payment", "record"]);
+    assert.equal(state.messages[0].invariant, invariant);
+    assert.equal(state.messages[0].transactionId, refusal === "malformed bytes" ? null : "0.0.1001@1788509000.000000000");
+    assert.equal(state.messages[0].transactionDigest, createHash("sha256").update(Buffer.from(body.transactionBase64, "base64")).digest("hex"));
+    assert.equal(state.messages[0].mandateDigest, mandateDigest(body.mandateEnvelope.mandate));
+    assert.equal(state.messages[0].settlementId, json.settlementId);
+    assert.equal(getMandateReviewState(state.databasePath, state.reservation).status, "absent");
+  });
+}
+
+test("POST /countersign refuses unknown tenants without disclosing enrollment", async (t) => {
+  const state = await countersignHarness(t);
+  for (const tenantId of ["unknown-a", "unknown-b"]) {
+    const { response, json } = await postReview(state.dependencies, {
+      ...state.body, tenantId, mandateEnvelope: signedMandateEnvelope({ ...mandate, tenantId }),
+    }, state.headers, "/countersign");
+    assert.equal(response.status, 403);
+    assert.deepEqual(json, { error: "mandate tenant is not authorized" });
+  }
+  assert.deepEqual(state.events, []);
+});
+
+test("POST /countersign rejects request shape and tenant binding errors before payment", async (t) => {
+  const state = await countersignHarness(t);
+  for (const body of [
+    { ...state.body, tenantId: "other" },
+    { ...state.body, scheduleId: "0.0.7001" },
+    { ...state.body, transactionBase64: 42 },
+    { tenantId: mandate.tenantId, mandateEnvelope: state.body.mandateEnvelope },
+  ]) {
+    const { response } = await postReview(state.dependencies, body, state.headers, "/countersign");
+    assert.equal(response.status, 400);
+  }
+  assert.deepEqual(state.events, []);
+});
+
+test("POST /countersign shares nonce exclusion with the schedule path in both directions", async (t) => {
+  const state = await countersignHarness(t);
+  const scheduled = { tenantId: mandate.tenantId, nonce: mandate.nonce, mandateDigest: digest, scheduleId: "0.0.7001" };
+  assert.equal(reserveMandateReview(state.databasePath, scheduled).status, "reserved");
+  const { response, json } = await postReview(state.dependencies, state.body, state.headers, "/countersign");
+  assert.equal(response.status, 200);
+  assert.equal(json.outcome, "refused");
+  assert.equal(state.events.includes("guard-sign"), false);
+  assert.equal(state.messages[0].invariant, json.invariant);
+  const next = { ...state.reservation, nonce: "8" };
+  assert.equal(reserveMandateReview(state.databasePath, next).status, "reserved");
+  assert.equal(reserveMandateReview(state.databasePath, { ...scheduled, nonce: "8" }).status, "refused");
+});
+
+test("POST /countersign concurrent paid requests produce only one guard signature", async (t) => {
+  const state = await countersignHarness(t);
+  const results = await Promise.all([
+    postReview(state.dependencies, state.body, state.headers, "/countersign"),
+    postReview(state.dependencies, state.body, state.headers, "/countersign"),
+  ]);
+  assert.deepEqual(results.map(({ json }) => json.outcome).sort(), ["approved", "refused"]);
+  assert.equal(state.events.filter((event) => event === "guard-sign").length, 1);
+  assert.equal(state.messages.length, 2);
+  assert.equal(state.events.filter((event) => event === "settle-payment").length, 2);
+});
+
+test("POST /countersign reservation failure cannot produce a guard signature", async (t) => {
+  const state = await countersignHarness(t);
+  state.dependencies.reserveNonce = () => { throw new Error("storage unavailable"); };
+  const { response, json } = await postReview(state.dependencies, state.body, state.headers, "/countersign");
+  assert.equal(response.status, 500);
+  assert.equal(json.transactionBase64, undefined);
+  assert.equal(state.events.includes("guard-sign"), false);
+  assert.deepEqual(state.messages, []);
+});
+
+test("POST /countersign HCS failure withholds signed bytes and keeps the nonce reserved", async (t) => {
+  const state = await countersignHarness(t);
+  state.dependencies.verdictLog = { async record() { throw new Error("HCS unavailable"); } };
+  const { response, json } = await postReview(state.dependencies, state.body, state.headers, "/countersign");
+  assert.equal(response.status, 500);
+  assert.equal(json.transactionBase64, undefined);
+  assert.ok(response.headers.get("payment-response"));
+  assert.equal(getMandateReviewState(state.databasePath, state.reservation).status, "pending");
+});
+
+test("POST /countersign logs a paid refusal even when the decoded transaction ID has invalid validity fields", async (t) => {
+  const state = await countersignHarness(t);
+  const list = proto.TransactionList.decode(Buffer.from(state.body.transactionBase64, "base64"));
+  const signed = proto.SignedTransaction.decode(list.transactionList[0].signedTransactionBytes!);
+  const body = proto.TransactionBody.decode(signed.bodyBytes);
+  body.transactionID!.transactionValidStart!.nanos = -1;
+  signed.bodyBytes = proto.TransactionBody.encode(body).finish();
+  signed.sigMap = { sigPair: [agentKey._toProtobufSignature(agentPrivateKey.sign(signed.bodyBytes))] };
+  list.transactionList[0].signedTransactionBytes = proto.SignedTransaction.encode(signed).finish();
+  const transactionBase64 = Buffer.from(proto.TransactionList.encode(list).finish()).toString("base64");
+  const { response, json } = await postReview(state.dependencies, { ...state.body, transactionBase64 }, state.headers, "/countersign");
+  assert.equal(response.status, 200);
+  assert.equal(json.outcome, "refused");
+  assert.equal(json.invariant, "transaction validity fields are present and valid");
+  assert.equal(state.messages[0].transactionId, json.transactionId);
+  assert.equal(state.messages[0].invariant, json.invariant);
+  assert.equal(state.events.includes("guard-sign"), false);
 });

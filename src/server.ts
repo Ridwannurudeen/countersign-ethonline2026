@@ -1,4 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { createHash } from "node:crypto";
+import { proto } from "@hiero-ledger/proto";
 
 import {
   AccountId,
@@ -10,7 +12,10 @@ import {
   ScheduleId,
   ScheduleInfoQuery,
   ScheduleSignTransaction,
+  TransactionId,
 } from "@hiero-ledger/sdk";
+
+import { validateCountersignTransfer, type CountersignApproval } from "./countersign-transfer.ts";
 
 import {
   mandateDigest,
@@ -97,6 +102,11 @@ export interface ProductionReviewTenant extends ReviewTenant {
 }
 
 export interface ReviewServerDependencies {
+  countersign: {
+    protocolMaxFeeTinybars: string;
+    nowEpochSeconds(): string;
+    sign(approval: CountersignApproval): Awaitable<string>;
+  };
   tenants: ReadonlyMap<string, ReviewTenant & { agentIdentifier: string }>;
   guardPublicKey: PublicKey;
   paymentGate: PaymentGate;
@@ -126,6 +136,7 @@ export interface ReviewObserver {
 }
 
 export interface ProductionReviewServerConfig {
+  signCountersign(approval: CountersignApproval): Awaitable<string>;
   tenants: ReadonlyMap<string, ProductionReviewTenant>;
   guardPublicKey: PublicKey;
   protocolMaxFeeTinybars: string;
@@ -176,8 +187,10 @@ function requireRecord(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-function requireExactRequestFields(value: Record<string, unknown>): void {
-  const requiredFields = ["tenantId", "mandateEnvelope", "scheduleId"] as const;
+function requireExactRequestFields(
+  value: Record<string, unknown>,
+  requiredFields: readonly string[] = ["tenantId", "mandateEnvelope", "scheduleId"],
+): void {
   const allowedFields = new Set<string>(requiredFields);
 
   for (const field of Object.keys(value)) {
@@ -383,7 +396,10 @@ async function handleReviewRequest(
       uaid: dependencies.participantIdentifiers.guard,
       guardPublicKey: dependencies.guardPublicKey.toString(),
       url: reviewUrl,
-      service: [{ id: "review", type: "HTTP", serviceEndpoint: reviewUrl, method: "POST" }],
+      service: [
+        { id: "review", type: "HTTP", serviceEndpoint: reviewUrl, method: "POST" },
+        { id: "countersign", type: "HTTP", serviceEndpoint: new URL("/countersign", reviewUrl).href, method: "POST" },
+      ],
       capabilities: {
         extensions: [{
           uri: "https://www.x402.org/",
@@ -407,12 +423,17 @@ async function handleReviewRequest(
     });
     return;
   }
-  if (path !== "/review") {
+  if (path !== "/review" && path !== "/countersign") {
     throw new RequestError(404, "not found");
   }
   if (incoming.method !== "POST") {
     response.setHeader("allow", "POST");
     throw new RequestError(405, "method not allowed");
+  }
+
+  if (path === "/countersign") {
+    await handleCountersignRequest(incoming, response, dependencies);
+    return;
   }
 
   const parsedRequest = parseReviewRequest(await readJsonBody(incoming));
@@ -577,6 +598,100 @@ async function handleReviewRequest(
     mirrorNodeUrl: responseBody.mirrorNodeUrl,
   });
   writeJson(response, 200, responseBody, payment.responseHeaders);
+}
+
+function reviewedTransactionId(transactionBase64: string): string | null {
+  try {
+    const list = proto.TransactionList.decode(Buffer.from(transactionBase64, "base64"));
+    const ids = new Set(list.transactionList.map((transaction) => {
+      const signed = proto.SignedTransaction.decode(transaction.signedTransactionBytes!);
+      const body = proto.TransactionBody.decode(signed.bodyBytes);
+      return TransactionId._fromProtobuf(body.transactionID!).toString();
+    }));
+    return ids.size === 1 ? [...ids][0] : null;
+  } catch {
+    // Malformed input still gets a paid refusal, bound to its byte digest.
+    return null;
+  }
+}
+
+async function handleCountersignRequest(
+  incoming: IncomingMessage,
+  response: ServerResponse,
+  dependencies: ReviewServerDependencies,
+): Promise<void> {
+  const request = requireRecord(await readJsonBody(incoming));
+  requireExactRequestFields(request, ["tenantId", "mandateEnvelope", "transactionBase64"]);
+  const tenantId = requireString(request.tenantId, "tenantId");
+  const transactionBase64 = requireString(request.transactionBase64, "transactionBase64");
+  let envelope: MandateEnvelope;
+  try {
+    envelope = parseMandateEnvelope(request.mandateEnvelope);
+  } catch (error) {
+    throw new RequestError(400, error instanceof Error ? error.message : "mandate envelope is invalid");
+  }
+  if (tenantId !== envelope.mandate.tenantId) {
+    throw new RequestError(400, "tenantId must match the mandate tenantId");
+  }
+  const tenant = dependencies.tenants.get(tenantId);
+  if (tenant === undefined) {
+    throw new RequestError(403, "mandate tenant is not authorized");
+  }
+  const payment = await dependencies.paymentGate.review(paymentSignatureHeader(incoming), "/countersign");
+  if (!payment.paid) {
+    writeJson(response, payment.status, payment.body, payment.headers);
+    return;
+  }
+  if (payment.settlementId.length === 0) {
+    throw new Error("payment settlement ID is missing");
+  }
+  dependencies.reviewObserver?.onPaymentSettled?.(payment.settlementId);
+  for (const [name, value] of Object.entries(payment.responseHeaders)) {
+    response.setHeader(name, value);
+  }
+  const digest = mandateDigest(envelope.mandate);
+  const transactionDigest = createHash("sha256").update(Buffer.from(transactionBase64, "base64")).digest("hex");
+  const transactionId = reviewedTransactionId(transactionBase64);
+  const outcome = validateCountersignTransfer(transactionBase64, envelope, {
+    ...tenant,
+    guardPublicKey: dependencies.guardPublicKey,
+    protocolMaxFeeTinybars: dependencies.countersign.protocolMaxFeeTinybars,
+    nowEpochSeconds: dependencies.countersign.nowEpochSeconds(),
+  }, (check) => dependencies.reviewObserver?.onReviewCheck?.(check));
+  let result: { outcome: "approved"; transactionBase64: string } | { outcome: "refused"; invariant: string };
+  if (!outcome.approved) {
+    result = { outcome: "refused", invariant: outcome.invariant };
+  } else {
+    const reservation = await dependencies.reserveNonce({
+      tenantId, nonce: envelope.mandate.nonce, mandateDigest: digest, transactionDigest,
+    });
+    if (reservation.status !== "reserved") {
+      result = {
+        outcome: "refused",
+        invariant: reservation.status === "refused" ? reservation.reason : "mandate nonce has already been reserved",
+      };
+    } else {
+      result = { outcome: "approved", transactionBase64: await dependencies.countersign.sign(outcome) };
+    }
+  }
+  const receipt = await dependencies.verdictLog.record({
+    outcome: result.outcome,
+    transactionId,
+    transactionDigest,
+    ...(result.outcome === "refused" ? { invariant: result.invariant } : {}),
+    mandateDigest: digest,
+    settlementId: payment.settlementId,
+    tenantId,
+    agentIdentifier: tenant.agentIdentifier,
+    guardIdentifier: dependencies.participantIdentifiers.guard,
+  });
+  if (receipt.mirrorNodeUrl.length === 0) {
+    throw new Error("verdict mirror-node URL is missing");
+  }
+  writeJson(response, 200, {
+    ...result, transactionId, transactionDigest, mandateDigest: digest,
+    settlementId: payment.settlementId, mirrorNodeUrl: receipt.mirrorNodeUrl,
+  }, payment.responseHeaders);
 }
 
 export function createReviewServer(dependencies: ReviewServerDependencies) {
@@ -867,6 +982,11 @@ export async function createProductionReviewServer(
   );
 
   return createReviewServer({
+    countersign: {
+      protocolMaxFeeTinybars: config.protocolMaxFeeTinybars,
+      nowEpochSeconds: () => Math.floor(Date.now() / 1_000).toString(),
+      sign: config.signCountersign,
+    },
     tenants,
     guardPublicKey: config.guardPublicKey,
     paymentGate,

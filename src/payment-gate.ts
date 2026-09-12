@@ -6,6 +6,7 @@ import {
   x402ResourceServer,
   type HTTPAdapter,
   type FacilitatorClient,
+  type RouteConfig,
 } from "@x402/core/server";
 import {
   extractTransactionFromPayload,
@@ -56,7 +57,7 @@ export type PaymentGateOutcome =
     };
 
 export interface PaymentGate {
-  review(paymentSignatureHeader?: string): Promise<PaymentGateOutcome>;
+  review(paymentSignatureHeader?: string, path?: "/review" | "/countersign"): Promise<PaymentGateOutcome>;
 }
 
 function requireNumericAccountId(value: string, field: string): void {
@@ -125,6 +126,7 @@ function validateConfig(config: PaymentGateConfig): void {
 function requestAdapter(
   resourceUrl: string,
   paymentSignatureHeader?: string,
+  path = "/review",
 ): HTTPAdapter {
   return {
     getHeader(name: string): string | undefined {
@@ -133,7 +135,7 @@ function requestAdapter(
         : undefined;
     },
     getMethod: () => "POST",
-    getPath: () => "/review",
+    getPath: () => path,
     getUrl: () => resourceUrl,
     getAcceptHeader: () => "application/json",
     getUserAgent: () => "Countersign",
@@ -212,8 +214,8 @@ export async function createPaymentGate(
     HEDERA_TESTNET,
     new ExactHederaScheme(),
   );
-  const httpServer = new x402HTTPResourceServer(resourceServer, {
-    "POST /review": {
+  const routes = Object.fromEntries(["/review", "/countersign"].map((path) => [
+    `POST ${path}`, {
       accepts: {
         scheme: "exact",
         network: HEDERA_TESTNET,
@@ -224,17 +226,19 @@ export async function createPaymentGate(
         },
         extra: { paymentFlow: "upfront" },
       },
-      resource: config.resourceUrl,
+      resource: path === "/review" ? config.resourceUrl : new URL(path, config.resourceUrl).href,
       description: "Countersign schedule review check",
       mimeType: "application/json",
       serviceName: "Countersign",
-    },
-  });
+    } satisfies RouteConfig,
+  ]));
+  const httpServer = new x402HTTPResourceServer(resourceServer, routes);
   await httpServer.initialize();
 
   return {
     async review(
       paymentSignatureHeader?: string,
+      path: "/review" | "/countersign" = "/review",
     ): Promise<PaymentGateOutcome> {
       const acceptedPaymentHeader =
         paymentSignatureHeader !== undefined &&
@@ -244,8 +248,8 @@ export async function createPaymentGate(
           ? undefined
           : paymentSignatureHeader;
       const result = await httpServer.processHTTPRequest({
-        adapter: requestAdapter(config.resourceUrl, acceptedPaymentHeader),
-        path: "/review",
+        adapter: requestAdapter(path === "/review" ? config.resourceUrl : new URL(path, config.resourceUrl).href, acceptedPaymentHeader, path),
+        path,
         method: "POST",
         paymentHeader: acceptedPaymentHeader,
       });

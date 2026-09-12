@@ -11,7 +11,10 @@ import { validateHcs14Identifier } from "./hcs14.ts";
 
 export interface VerdictRecord {
   readonly outcome: "approved" | "refused";
-  readonly scheduleId: string;
+  readonly scheduleId?: string;
+  readonly transactionId?: string | null;
+  readonly transactionDigest?: string;
+  readonly invariant?: string;
   readonly mandateDigest: string;
   readonly settlementId: string;
   readonly tenantId: string;
@@ -73,7 +76,20 @@ function validateVerdictRecord(record: VerdictRecord): void {
   if (record.outcome !== "approved" && record.outcome !== "refused") {
     throw new Error("verdict outcome must be approved or refused");
   }
-  if (!scheduleIdPattern.test(record.scheduleId)) {
+  if (record.transactionDigest !== undefined) {
+    if (!mandateDigestPattern.test(record.transactionDigest)) {
+      throw new Error("transactionDigest must be a lowercase SHA-256 digest");
+    }
+    if (record.scheduleId !== undefined || record.transactionId === undefined) {
+      throw new Error("transfer verdict must carry a transactionId instead of a scheduleId");
+    }
+    if (record.transactionId !== null && record.transactionId.length === 0) {
+      throw new Error("decoded transactionId must not be empty");
+    }
+    if (record.outcome === "refused" && !record.invariant) {
+      throw new Error("transfer refusal must carry the deciding invariant");
+    }
+  } else if (record.scheduleId === undefined || !scheduleIdPattern.test(record.scheduleId)) {
     throw new Error("scheduleId must be a canonical numeric Hedera ScheduleID");
   }
   if (!mandateDigestPattern.test(record.mandateDigest)) {
@@ -95,6 +111,9 @@ function verdictMessage(record: VerdictRecord): string {
     v: 1,
     outcome: record.outcome,
     scheduleId: record.scheduleId,
+    transactionId: record.transactionId,
+    transactionDigest: record.transactionDigest,
+    invariant: record.invariant,
     mandateDigest: record.mandateDigest,
     settlementId: record.settlementId,
     tenantId: record.tenantId,

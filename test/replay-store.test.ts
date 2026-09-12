@@ -28,7 +28,7 @@ function databasePath(): string {
   return join(directory, "countersign.sqlite");
 }
 
-function reservation(overrides: Partial<MandateReviewReservation> = {}) {
+function reservation(overrides: Partial<Extract<MandateReviewReservation, { scheduleId: string }>> = {}) {
   return {
     tenantId: "treasury-1",
     nonce: "7",

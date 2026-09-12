@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { AccountId, Client, PrivateKey, PublicKey } from "@hiero-ledger/sdk";
 
 import { createProductionReviewServer, type ProductionReviewTenant } from "../src/server.ts";
+import { countersignTransfer } from "../src/countersign-transfer.ts";
 
 // The long-running guard. The narrated flows start a review server on loopback
 // for the duration of one run; this keeps the same server alive at a public
@@ -148,6 +149,7 @@ async function main(): Promise<void> {
   mkdirSync(resolve("var"), { recursive: true });
 
   const server = await createProductionReviewServer(client, {
+    signCountersign: (approval) => countersignTransfer(approval, guardPrivateKey),
     tenants,
     guardPublicKey: guardPrivateKey.publicKey,
     protocolMaxFeeTinybars: PROTOCOL_MAX_FEE_TINYBARS,

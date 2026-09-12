@@ -1,11 +1,13 @@
 import { DatabaseSync } from "node:sqlite";
 
-export interface MandateReviewReservation {
+export type MandateReviewReservation = {
   tenantId: string;
   nonce: string;
   mandateDigest: string;
-  scheduleId: string;
-}
+} & (
+  | { scheduleId: string; transactionDigest?: never }
+  | { scheduleId?: never; transactionDigest: string }
+);
 
 export interface CompletedMandateReview {
   outcome: "approved";
@@ -83,9 +85,19 @@ function validateReservation(value: MandateReviewReservation): void {
   if (!digestPattern.test(value.mandateDigest)) {
     throw new Error("mandateDigest must be a lowercase SHA-256 digest");
   }
-  if (!scheduleIdPattern.test(value.scheduleId)) {
+  if (value.transactionDigest !== undefined) {
+    if (!digestPattern.test(value.transactionDigest)) {
+      throw new Error("transactionDigest must be a lowercase SHA-256 digest");
+    }
+  } else if (!scheduleIdPattern.test(value.scheduleId)) {
     throw new Error("scheduleId must be a canonical numeric Hedera ScheduleID");
   }
+}
+
+function reservationTarget(value: MandateReviewReservation): string {
+  return value.transactionDigest === undefined
+    ? value.scheduleId
+    : `transfer:${value.transactionDigest}`;
 }
 
 function validateCompletedReview(value: CompletedMandateReview): void {
@@ -261,7 +273,7 @@ export function reserveMandateReview(
       const sameTuple =
         requireStoredString(existing, "mandate_digest") ===
           reservation.mandateDigest &&
-        requireStoredString(existing, "schedule_id") === reservation.scheduleId;
+        requireStoredString(existing, "schedule_id") === reservationTarget(reservation);
 
       if (!sameTuple) {
         return {
@@ -311,7 +323,7 @@ export function reserveMandateReview(
         reservation.tenantId,
         reservation.nonce,
         reservation.mandateDigest,
-        reservation.scheduleId,
+        reservationTarget(reservation),
       );
     return { status: "reserved" };
   });
@@ -348,7 +360,7 @@ export function completeMandateReview(
         reservation.tenantId,
         reservation.nonce,
         reservation.mandateDigest,
-        reservation.scheduleId,
+        reservationTarget(reservation),
       );
 
     if (result.changes !== 1) {
@@ -389,7 +401,7 @@ export function getMandateReviewState(
         reservation.tenantId,
         reservation.nonce,
         reservation.mandateDigest,
-        reservation.scheduleId,
+        reservationTarget(reservation),
       );
 
     if (existing === undefined) {
