@@ -15,7 +15,7 @@ import {
   TransactionId,
 } from "@hiero-ledger/sdk";
 
-import { validateCountersignTransfer, type CountersignApproval } from "./countersign-transfer.ts";
+import { validateCountersignTransfer, type CountersignApproval, type CountersignContext } from "./countersign-transfer.ts";
 
 import {
   mandateDigest,
@@ -103,6 +103,7 @@ export interface ProductionReviewTenant extends ReviewTenant {
 
 export interface ReviewServerDependencies {
   countersign: {
+    executeTokenInfoQuery?: CountersignContext["executeTokenInfoQuery"];
     protocolMaxFeeTinybars: string;
     nowEpochSeconds(): string;
     sign(approval: CountersignApproval): Awaitable<string>;
@@ -652,11 +653,12 @@ async function handleCountersignRequest(
   const digest = mandateDigest(envelope.mandate);
   const transactionDigest = createHash("sha256").update(Buffer.from(transactionBase64, "base64")).digest("hex");
   const transactionId = reviewedTransactionId(transactionBase64);
-  const outcome = validateCountersignTransfer(transactionBase64, envelope, {
+  const outcome = await validateCountersignTransfer(transactionBase64, envelope, {
     ...tenant,
     guardPublicKey: dependencies.guardPublicKey,
     protocolMaxFeeTinybars: dependencies.countersign.protocolMaxFeeTinybars,
     nowEpochSeconds: dependencies.countersign.nowEpochSeconds(),
+    executeTokenInfoQuery: dependencies.countersign.executeTokenInfoQuery,
   }, (check) => dependencies.reviewObserver?.onReviewCheck?.(check));
   let result: { outcome: "approved"; transactionBase64: string } | { outcome: "refused"; invariant: string };
   if (!outcome.approved) {
@@ -983,6 +985,7 @@ export async function createProductionReviewServer(
 
   return createReviewServer({
     countersign: {
+      executeTokenInfoQuery: (query) => query.execute(client),
       protocolMaxFeeTinybars: config.protocolMaxFeeTinybars,
       nowEpochSeconds: () => Math.floor(Date.now() / 1_000).toString(),
       sign: config.signCountersign,

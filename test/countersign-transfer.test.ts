@@ -8,6 +8,9 @@ import {
   PrivateKey,
   Transaction,
   TransactionId,
+  TokenId,
+  TokenInfo,
+  TokenInfoQuery,
   TransferTransaction,
 } from "@hiero-ledger/sdk";
 
@@ -92,15 +95,18 @@ function rewrite(
   );
 }
 
-function refused(
+async function refused(
   bytes: string,
   invariant: string,
   policy = context,
   value = envelope(),
 ) {
   const checks: ReviewCheck[] = [];
-  const result = validateCountersignTransfer(bytes, value, policy, (check) =>
-    checks.push(check),
+  const result = await validateCountersignTransfer(
+    bytes,
+    value,
+    policy,
+    (check) => checks.push(check),
   );
   assert.deepEqual(result, { approved: false, reason: invariant, invariant });
   assert.deepEqual(checks.at(-1), { invariant, passed: false });
@@ -108,7 +114,7 @@ function refused(
 
 test("approves SDK-frozen agent-signed HBAR at the cap and preserves exact bytes when countersigning", async () => {
   const bytes = await fixture();
-  const result = validateCountersignTransfer(bytes, envelope(), context);
+  const result = await validateCountersignTransfer(bytes, envelope(), context);
   assert.equal(result.approved, true, JSON.stringify(result));
   assert.ok(result.approved);
   assert.equal(result.amountTinybars, "100");
@@ -145,7 +151,7 @@ test("approves SDK-frozen agent-signed HBAR at the cap and preserves exact bytes
     Transaction.fromBytes(Buffer.from(output, "base64")) instanceof
       TransferTransaction,
   );
-  refused(output, "guard signature is not already present");
+  await refused(output, "guard signature is not already present");
 });
 
 test("re-encode equality refuses an unknown signed body field even with a valid agent signature", async () => {
@@ -155,17 +161,18 @@ test("re-encode equality refuses an unknown signed body field even with a valid 
       Buffer.from([0xf8, 0x7f, 0x01]),
     ]),
   );
-  refused(bytes, "signed body re-encode equality");
+  await refused(bytes, "signed body re-encode equality");
 });
 
 // The outermost envelope is checked too: a field the TransactionList schema does not model
 // would otherwise be dropped by the decoder and never reach the inner checks.
 test("re-encode equality refuses an unknown TransactionList field", async () => {
   const valid = Buffer.from(await fixture(), "base64");
-  const bytes = Buffer.concat([valid, Buffer.from([0xf8, 0x7f, 0x01])]).toString(
-    "base64",
-  );
-  refused(bytes, "transaction list re-encode equality");
+  const bytes = Buffer.concat([
+    valid,
+    Buffer.from([0xf8, 0x7f, 0x01]),
+  ]).toString("base64");
+  await refused(bytes, "transaction list re-encode equality");
 });
 
 test("re-encode equality refuses an unknown nested transfer field", async () => {
@@ -181,7 +188,7 @@ test("re-encode equality refuses an unknown nested transfer field", async () => 
       .bytes(transfer)
       .finish();
   });
-  refused(bytes, "signed body re-encode equality");
+  await refused(bytes, "signed body re-encode equality");
 });
 
 const bodyCases: [string, (body: proto.TransactionBody) => void, string][] = [
@@ -318,11 +325,11 @@ const bodyCases: [string, (body: proto.TransactionBody) => void, string][] = [
 ];
 for (const [name, edit, invariant] of bodyCases) {
   test(`refuses ${name}`, async () =>
-    refused(rewrite(await fixture(), edit), invariant));
+    await refused(rewrite(await fixture(), edit), invariant));
 }
 
 test("refuses transfers above the owner-signed cap", async () => {
-  refused(
+  await refused(
     await fixture(),
     "transfer amount is within the mandate cap",
     context,
@@ -331,12 +338,12 @@ test("refuses transfers above the owner-signed cap", async () => {
 });
 
 test("requires the configured owner's signature and matching treasury", async () => {
-  refused(
+  await refused(
     await fixture(),
     "mandate signature is valid for the configured owner",
     { ...context, ownerPublicKey: guard.publicKey },
   );
-  refused(
+  await refused(
     await fixture(),
     "mandate treasury matches the configured treasury",
     context,
@@ -346,7 +353,7 @@ test("requires the configured owner's signature and matching treasury", async ()
 
 test("refuses inactive and expired mandates", async () => {
   for (const nowEpochSeconds of ["1788508799", mandate.expiresAtEpochSeconds]) {
-    refused(await fixture(), "mandate is active at review time", {
+    await refused(await fixture(), "mandate is active at review time", {
       ...context,
       nowEpochSeconds,
     });
@@ -356,31 +363,35 @@ test("refuses inactive and expired mandates", async () => {
 test("default validity floor leaves headroom and refuses its boundary, expiry and future start", async () => {
   const bytes = await fixture();
   for (const nowEpochSeconds of ["1788509090", "1788509120", "1788508999"]) {
-    refused(
+    await refused(
       bytes,
       "transaction has started and remaining validity exceeds the floor",
       { ...context, nowEpochSeconds },
     );
   }
   assert.ok(
-    validateCountersignTransfer(bytes, envelope(), {
-      ...context,
-      nowEpochSeconds: "1788509089",
-    }).approved,
+    (
+      await validateCountersignTransfer(bytes, envelope(), {
+        ...context,
+        nowEpochSeconds: "1788509089",
+      })
+    ).approved,
   );
-  refused(
+  await refused(
     bytes,
     "transaction has started and remaining validity exceeds the floor",
     { ...context, minRemainingValiditySeconds: "115" },
   );
   assert.ok(
-    validateCountersignTransfer(bytes, envelope(), {
-      ...context,
-      minRemainingValiditySeconds: "114",
-    }).approved,
+    (
+      await validateCountersignTransfer(bytes, envelope(), {
+        ...context,
+        minRemainingValiditySeconds: "114",
+      })
+    ).approved,
   );
   for (const minRemainingValiditySeconds of ["0", "-1", "NaN"]) {
-    refused(
+    await refused(
       bytes,
       "review time, validity floor and fee policy are valid integers",
       { ...context, minRemainingValiditySeconds },
@@ -390,11 +401,11 @@ test("default validity floor leaves headroom and refuses its boundary, expiry an
 
 test("refuses absent, wrong, truncated-prefix and invalid agent signatures", async () => {
   const bytes = await fixture();
-  refused(
+  await refused(
     await fixture(owner),
     "only the configured agent signature is present",
   );
-  refused(
+  await refused(
     rewrite(
       bytes,
       (_body, signed) => {
@@ -404,7 +415,7 @@ test("refuses absent, wrong, truncated-prefix and invalid agent signatures", asy
     ),
     "only the configured agent signature is present",
   );
-  refused(
+  await refused(
     rewrite(
       bytes,
       (_body, signed) => {
@@ -416,7 +427,7 @@ test("refuses absent, wrong, truncated-prefix and invalid agent signatures", asy
     ),
     "only the configured agent signature is present",
   );
-  refused(
+  await refused(
     rewrite(
       bytes,
       (_body, signed) => {
@@ -426,7 +437,7 @@ test("refuses absent, wrong, truncated-prefix and invalid agent signatures", asy
     ),
     "agent signature verifies the exact signed body bytes",
   );
-  refused(
+  await refused(
     rewrite(
       bytes,
       (body) => {
@@ -441,7 +452,7 @@ test("refuses absent, wrong, truncated-prefix and invalid agent signatures", asy
 test("supports ECDSA agent and guard signatures", async () => {
   const ecAgent = PrivateKey.generateECDSA();
   const ecGuard = PrivateKey.generateECDSA();
-  const result = validateCountersignTransfer(
+  const result = await validateCountersignTransfer(
     await fixture(ecAgent),
     envelope(),
     {
@@ -460,7 +471,7 @@ test("supports ECDSA agent and guard signatures", async () => {
 
 test("validates and countersigns every node variant; refuses divergent signed bodies", async () => {
   const bytes = await fixture(agent, ["0.0.3", "0.0.4"]);
-  const result = validateCountersignTransfer(bytes, envelope(), context);
+  const result = await validateCountersignTransfer(bytes, envelope(), context);
   assert.ok(result.approved, JSON.stringify(result));
   const signed = proto.TransactionList.decode(
     Buffer.from(countersignTransfer(result, guard), "base64"),
@@ -476,7 +487,7 @@ test("validates and countersigns every node variant; refuses divergent signed bo
       ),
     );
   }
-  refused(
+  await refused(
     rewrite(bytes, (body) => {
       body.memo = "different";
     }),
@@ -485,13 +496,13 @@ test("validates and countersigns every node variant; refuses divergent signed bo
 });
 
 test("refuses malformed encodings and unsupported transaction wrappers", async () => {
-  refused("", "transaction bytes are canonical nonempty base64");
-  refused("???", "transaction bytes are canonical nonempty base64");
-  refused("/w==", "transaction or policy input is malformed");
+  await refused("", "transaction bytes are canonical nonempty base64");
+  await refused("???", "transaction bytes are canonical nonempty base64");
+  await refused("/w==", "transaction or policy input is malformed");
   const bytes = await fixture();
   const list = proto.TransactionList.decode(Buffer.from(bytes, "base64"));
   list.transactionList[0].bodyBytes = new Uint8Array([1]);
-  refused(
+  await refused(
     Buffer.from(proto.TransactionList.encode(list).finish()).toString("base64"),
     "transaction wrapper contains only signed bytes",
   );
@@ -504,7 +515,7 @@ test("HTS mandate requires its token and retains custom-fee refusal without Toke
     asset: { kind: "hts", tokenId: "0.0.123" },
   });
   const bytes = await fixture();
-  refused(bytes, "asset matches the mandate token", context, value);
+  await refused(bytes, "asset matches the mandate token", context, value);
   const transfer = new TransferTransaction()
     .addTokenTransfer("0.0.123", "0.0.1001", -100)
     .addTokenTransfer("0.0.123", "0.0.1002", 100)
@@ -514,17 +525,12 @@ test("HTS mandate requires its token and retains custom-fee refusal without Toke
     .freeze();
   await transfer.sign(agent);
   const tokens = Buffer.from(transfer.toBytes()).toString("base64");
-  refused(
-    tokens,
-    "HTS custom-fee state is verified as empty and immutable",
-    context,
-    value,
-  );
-  refused(tokens, "asset matches the HBAR mandate");
+  await refused(tokens, "HTS TokenInfo lookup is available", context, value);
+  await refused(tokens, "asset matches the HBAR mandate");
 });
 
 test("countersigning requires an approval and its configured guard key", async () => {
-  const result = validateCountersignTransfer(
+  const result = await validateCountersignTransfer(
     await fixture(),
     envelope(),
     context,
@@ -538,4 +544,356 @@ test("countersigning requires an approval and its configured guard key", async (
     () => countersignTransfer({ approved: true } as CountersignApproval, guard),
     /requires an approval/,
   );
+});
+
+const tokenId = "0.0.429274";
+const tokenEnvelope = envelope({
+  ...mandate,
+  schemaVersion: "2",
+  asset: { kind: "hts", tokenId },
+});
+
+function tokenInfo(fields: proto.ITokenInfo = {}): TokenInfo {
+  return TokenInfo.fromBytes(
+    proto.TokenInfo.encode({
+      tokenId: TokenId.fromString(tokenId)._toProtobuf(),
+      symbol: "USDC",
+      decimals: 6,
+      totalSupply: Hbar.fromTinybars(1000000).toTinybars(),
+      adminKey: { ed25519: owner.publicKey.toBytesRaw() },
+      ...fields,
+    }).finish(),
+  );
+}
+
+async function tokenFixture(nodes = ["0.0.3"]) {
+  const transaction = new TransferTransaction()
+    .addTokenTransfer(tokenId, "0.0.1001", -100)
+    .addTokenTransfer(tokenId, "0.0.1002", 100)
+    .setTransactionId(TransactionId.fromString("0.0.1001@1788509000.000000000"))
+    .setNodeAccountIds(nodes.map((node) => AccountId.fromString(node)))
+    .setMaxTransactionFee(Hbar.fromTinybars(context.protocolMaxFeeTinybars))
+    .freeze();
+  await transaction.sign(agent);
+  return Buffer.from(transaction.toBytes()).toString("base64");
+}
+
+const tokenContext: CountersignContext = {
+  ...context,
+  async executeTokenInfoQuery(query) {
+    assert.ok(query instanceof TokenInfoQuery);
+    assert.equal(query.tokenId?.toString(), tokenId);
+    return tokenInfo();
+  },
+};
+
+test("approves immutable fee-free USDC at the mandate cap and countersigns exact node bodies", async () => {
+  const bytes = await tokenFixture(["0.0.3", "0.0.4"]);
+  let reads = 0;
+  const approval = await validateCountersignTransfer(bytes, tokenEnvelope, {
+    ...tokenContext,
+    async executeTokenInfoQuery(query) {
+      reads++;
+      return tokenContext.executeTokenInfoQuery!(query);
+    },
+  });
+  assert.ok(approval.approved, JSON.stringify(approval));
+  assert.equal(reads, 1);
+  assert.deepEqual(approval.asset, { kind: "hts", tokenId });
+  assert.ok(Object.isFrozen(approval.asset));
+  assert.equal(approval.amountTinybars, "100");
+  assert.equal(approval.recipientAccountId, "0.0.1002");
+  const output = countersignTransfer(approval, guard);
+  const before = proto.TransactionList.decode(Buffer.from(bytes, "base64"));
+  const after = proto.TransactionList.decode(Buffer.from(output, "base64"));
+  assert.equal(after.transactionList.length, before.transactionList.length);
+  for (const [index, entry] of after.transactionList.entries()) {
+    const original = proto.SignedTransaction.decode(
+      before.transactionList[index].signedTransactionBytes!,
+    );
+    const signed = proto.SignedTransaction.decode(
+      entry.signedTransactionBytes!,
+    );
+    assert.deepEqual(signed.bodyBytes, original.bodyBytes);
+    assert.deepEqual(signed.sigMap!.sigPair![0], original.sigMap!.sigPair![0]);
+    assert.equal(signed.sigMap!.sigPair!.length, 2);
+    assert.ok(
+      agent.publicKey.verify(
+        signed.bodyBytes,
+        signed.sigMap!.sigPair![0].ed25519!,
+      ),
+    );
+    assert.ok(
+      guard.publicKey.verify(
+        signed.bodyBytes,
+        signed.sigMap!.sigPair![1].ed25519!,
+      ),
+    );
+  }
+});
+
+for (const [name, fields, invariant] of [
+  [
+    "fixed custom fee",
+    {
+      customFees: [{ fixedFee: { amount: Hbar.fromTinybars(1).toTinybars() } }],
+    },
+    "HTS custom fee list is empty",
+  ],
+  [
+    "fractional custom fee",
+    {
+      customFees: [
+        {
+          fractionalFee: {
+            fractionalAmount: {
+              numerator: Hbar.fromTinybars(1).toTinybars(),
+              denominator: Hbar.fromTinybars(100).toTinybars(),
+            },
+          },
+        },
+      ],
+    },
+    "HTS custom fee list is empty",
+  ],
+  [
+    "fee-schedule key",
+    { feeScheduleKey: { ed25519: owner.publicKey.toBytesRaw() } },
+    "HTS fee schedule is immutable",
+  ],
+  [
+    "wrong returned token ID",
+    { tokenId: TokenId.fromString("0.0.123")._toProtobuf() },
+    "HTS TokenInfo matches the mandate token",
+  ],
+] satisfies [string, proto.ITokenInfo, string][]) {
+  test(`refuses USDC with ${name}`, async () => {
+    await refused(
+      await tokenFixture(),
+      invariant,
+      {
+        ...context,
+        executeTokenInfoQuery: async () => tokenInfo(fields),
+      },
+      tokenEnvelope,
+    );
+  });
+}
+
+test("refuses USDC when the TokenInfo query fails", async () => {
+  await refused(
+    await tokenFixture(),
+    "HTS TokenInfo lookup succeeds",
+    {
+      ...context,
+      executeTokenInfoQuery: async () => {
+        throw new Error("consensus unavailable");
+      },
+    },
+    tokenEnvelope,
+  );
+});
+
+test("reads token fee state again for each review", async () => {
+  const bytes = await tokenFixture();
+  let reads = 0;
+  const policy = {
+    ...context,
+    executeTokenInfoQuery: async () => {
+      reads++;
+      return tokenInfo(
+        reads === 1
+          ? {}
+          : { feeScheduleKey: { ed25519: owner.publicKey.toBytesRaw() } },
+      );
+    },
+  };
+  assert.ok(
+    (await validateCountersignTransfer(bytes, tokenEnvelope, policy)).approved,
+  );
+  await refused(bytes, "HTS fee schedule is immutable", policy, tokenEnvelope);
+  assert.equal(reads, 2);
+});
+
+test("HBAR review does not query TokenInfo", async () => {
+  let reads = 0;
+  const result = await validateCountersignTransfer(
+    await fixture(),
+    envelope(),
+    {
+      ...context,
+      executeTokenInfoQuery: async () => {
+        reads++;
+        return tokenInfo();
+      },
+    },
+  );
+  assert.ok(result.approved);
+  assert.equal(reads, 0);
+});
+
+const tokenCases: [string, (body: proto.TransactionBody) => void, string][] = [
+  [
+    "wrong token ID",
+    (body) => {
+      body.cryptoTransfer!.tokenTransfers![0].token =
+        TokenId.fromString("0.0.123")._toProtobuf();
+    },
+    "asset matches the mandate token",
+  ],
+  [
+    "extra token list",
+    (body) => {
+      body.cryptoTransfer!.tokenTransfers!.push(
+        body.cryptoTransfer!.tokenTransfers![0],
+      );
+    },
+    "asset matches the mandate token",
+  ],
+  [
+    "HBAR movement",
+    (body) => {
+      body.cryptoTransfer!.transfers = {
+        accountAmounts: body.cryptoTransfer!.tokenTransfers![0].transfers,
+      };
+    },
+    "asset matches the mandate token",
+  ],
+  [
+    "NFT",
+    (body) => {
+      body.cryptoTransfer!.tokenTransfers![0].nftTransfers = [{}];
+    },
+    "token transfer contains no NFTs or unreviewed fields",
+  ],
+  [
+    "extra token field",
+    (body) => {
+      body.cryptoTransfer!.tokenTransfers![0].expectedDecimals = { value: 6 };
+    },
+    "token transfer contains no NFTs or unreviewed fields",
+  ],
+  [
+    "maxCustomFees",
+    (body) => {
+      body.maxCustomFees = [{}];
+    },
+    "transaction is only a TransferTransaction with reviewed fields",
+  ],
+];
+for (const [name, edit, invariant] of bodyCases.filter(([name]) =>
+  [
+    "wrong debit account",
+    "extra recipient",
+    "unequal amounts",
+    "nonpositive recipient",
+    "unlisted recipient",
+    "alias",
+  ].includes(name),
+)) {
+  tokenCases.push([
+    name,
+    (body) => {
+      body.cryptoTransfer!.transfers = {
+        accountAmounts: body.cryptoTransfer!.tokenTransfers![0].transfers,
+      };
+      edit(body);
+      body.cryptoTransfer!.transfers = null;
+    },
+    invariant,
+  ]);
+}
+for (const index of [0, 1]) {
+  for (const field of [
+    "isApproval",
+    "preTxAllowanceHook",
+    "prePostTxAllowanceHook",
+  ] as const) {
+    tokenCases.push([
+      `${field} on adjustment ${index}`,
+      (body) => {
+        const adjustment =
+          body.cryptoTransfer!.tokenTransfers![0].transfers![index];
+        if (field === "isApproval") adjustment[field] = true;
+        else adjustment[field] = {};
+      },
+      "balance adjustment contains no approval, hook or unreviewed fields",
+    ]);
+  }
+}
+for (const [name, edit, invariant] of tokenCases) {
+  test(`refuses USDC ${name} before querying TokenInfo`, async () => {
+    let reads = 0;
+    await refused(
+      rewrite(await tokenFixture(), edit),
+      invariant,
+      {
+        ...context,
+        executeTokenInfoQuery: async () => {
+          reads++;
+          return tokenInfo();
+        },
+      },
+      tokenEnvelope,
+    );
+    assert.equal(reads, 0);
+  });
+}
+
+test("refuses USDC over the mandate cap", async () => {
+  await refused(
+    await tokenFixture(),
+    "transfer amount is within the mandate cap",
+    tokenContext,
+    envelope({ ...tokenEnvelope.mandate, maxAmountTinybars: "99" }),
+  );
+});
+
+test("USDC retains signed-body re-encode equality for unknown token fields", async () => {
+  const bytes = rewrite(await tokenFixture(), (body) => {
+    const token = Buffer.concat([
+      proto.TokenTransferList.encode(
+        body.cryptoTransfer!.tokenTransfers![0],
+      ).finish(),
+      Buffer.from([0xf8, 0x7f, 0x01]),
+    ]);
+    const transfer = proto.CryptoTransferTransactionBody.encode({})
+      .uint32(2 * 8 + 2)
+      .bytes(token)
+      .finish();
+    body.cryptoTransfer = null;
+    return proto.TransactionBody.encode(body)
+      .uint32(14 * 8 + 2)
+      .bytes(transfer)
+      .finish();
+  });
+  await refused(
+    bytes,
+    "signed body re-encode equality",
+    tokenContext,
+    tokenEnvelope,
+  );
+});
+
+test("invalid USDC agent signature is refused before querying TokenInfo", async () => {
+  let reads = 0;
+  await refused(
+    rewrite(
+      await tokenFixture(),
+      (body) => {
+        body.memo = "changed";
+      },
+      false,
+    ),
+    "agent signature verifies the exact signed body bytes",
+    {
+      ...context,
+      executeTokenInfoQuery: async () => {
+        reads++;
+        return tokenInfo();
+      },
+    },
+    tokenEnvelope,
+  );
+  assert.equal(reads, 0);
 });

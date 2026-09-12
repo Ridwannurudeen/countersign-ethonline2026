@@ -209,7 +209,7 @@ test("withholds approved bytes when guard payment settlement failed", async (t) 
 
 test("accepts the unchanged guard core's approval when the quoted fee payer is the treasury", async (t) => {
   serveGuard(t, async (bytes) => {
-    const approval = validateCountersignTransfer(bytes, envelope, {
+    const approval = await validateCountersignTransfer(bytes, envelope, {
       expectedAgentAccountId: "0.0.2001", treasuryAccountId: treasury,
       ownerPublicKey: owner.publicKey, agentPublicKey: agent.publicKey, guardPublicKey: guard.publicKey,
       nowEpochSeconds: Math.floor(Date.now() / 1000).toString(), protocolMaxFeeTinybars: "100000000",
@@ -222,7 +222,7 @@ test("accepts the unchanged guard core's approval when the quoted fee payer is t
 
 test("surfaces the current guard's treasury transaction-ID policy for a distinct stock fee payer", async (t) => {
   const http = serveGuard(t, async (bytes) => {
-    const outcome = validateCountersignTransfer(bytes, envelope, {
+    const outcome = await validateCountersignTransfer(bytes, envelope, {
       expectedAgentAccountId: "0.0.2001", treasuryAccountId: treasury,
       ownerPublicKey: owner.publicKey, agentPublicKey: agent.publicKey, guardPublicKey: guard.publicKey,
       nowEpochSeconds: Math.floor(Date.now() / 1000).toString(), protocolMaxFeeTinybars: "100000000",

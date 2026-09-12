@@ -1,10 +1,16 @@
 import { proto } from "@hiero-ledger/proto";
-import { type PrivateKey, type PublicKey } from "@hiero-ledger/sdk";
+import {
+  TokenInfoQuery,
+  type TokenInfo,
+  type PrivateKey,
+  type PublicKey,
+} from "@hiero-ledger/sdk";
 
 import {
   mandateAsset,
   parseMandateEnvelope,
   verifyMandateSignature,
+  type MandateAsset,
 } from "./mandate.ts";
 import type { ReviewCheckReporter, ReviewOutcome } from "./review-schedule.ts";
 
@@ -18,6 +24,7 @@ export interface CountersignContext {
   readonly protocolMaxFeeTinybars: string;
   readonly nowEpochSeconds: string;
   readonly minRemainingValiditySeconds?: string;
+  executeTokenInfoQuery?(query: TokenInfoQuery): Promise<TokenInfo>;
 }
 
 const validated = Symbol("validated transfer bytes");
@@ -25,7 +32,7 @@ const validated = Symbol("validated transfer bytes");
 export type CountersignApproval = Extract<ReviewOutcome, { approved: true }> & {
   readonly treasuryAccountId: string;
   readonly agentAccountId: string;
-  readonly asset: { readonly kind: "hbar" };
+  readonly asset: Readonly<MandateAsset>;
   readonly [validated]: {
     readonly bytes: string;
     readonly guardPublicKey: string;
@@ -65,12 +72,12 @@ function numericId(
   return parts.join(".");
 }
 
-export function validateCountersignTransfer(
+export async function validateCountersignTransfer(
   transactionBase64: string,
   mandateEnvelope: unknown,
   context: CountersignContext,
   reportCheck?: ReviewCheckReporter,
-): CountersignOutcome {
+): Promise<CountersignOutcome> {
   function check(invariant: string, passed: boolean): asserts passed {
     reportCheck?.({ invariant, passed });
     if (!passed) throw new PolicyRefusal(invariant);
@@ -95,6 +102,7 @@ export function validateCountersignTransfer(
       verifyMandateSignature(envelope, context.ownerPublicKey),
     );
     const mandate = envelope.mandate;
+    const asset = mandateAsset(mandate);
     check(
       "mandate treasury matches the configured treasury",
       mandate.treasuryAccountId === context.treasuryAccountId,
@@ -241,7 +249,6 @@ export function validateCountersignTransfer(
         "cryptoTransfer contains only reviewed fields",
         onlyFields(transfer, ["transfers", "tokenTransfers"]),
       );
-      const asset = mandateAsset(mandate);
       const tokens = transfer.tokenTransfers ?? [];
       let adjustments: proto.IAccountAmount[];
       if (asset.kind === "hbar") {
@@ -318,11 +325,6 @@ export function validateCountersignTransfer(
         credit.amount <= BigInt(mandate.maxAmountTinybars),
       );
       check(
-        "HTS custom-fee state is verified as empty and immutable",
-        asset.kind === "hbar",
-      );
-
-      check(
         "signature map contains only signature pairs",
         signed.sigMap != null && onlyFields(signed.sigMap, ["sigPair"]),
       );
@@ -365,12 +367,32 @@ export function validateCountersignTransfer(
       };
     }
     check("validated intent is present", intent !== undefined);
+    if (asset.kind === "hts") {
+      check(
+        "HTS TokenInfo lookup is available",
+        context.executeTokenInfoQuery !== undefined,
+      );
+      let info: TokenInfo;
+      try {
+        info = await context.executeTokenInfoQuery(
+          new TokenInfoQuery().setTokenId(asset.tokenId),
+        );
+      } catch {
+        check("HTS TokenInfo lookup succeeds", false);
+      }
+      check(
+        "HTS TokenInfo matches the mandate token",
+        info.tokenId.toString() === asset.tokenId,
+      );
+      check("HTS custom fee list is empty", info.customFees.length === 0);
+      check("HTS fee schedule is immutable", info.feeScheduleKey === null);
+    }
     return Object.freeze({
       approved: true,
       ...intent,
       treasuryAccountId: context.treasuryAccountId,
       agentAccountId: context.expectedAgentAccountId,
-      asset: Object.freeze({ kind: "hbar" as const }),
+      asset: Object.freeze(asset),
       [validated]: Object.freeze({
         bytes: transactionBase64,
         guardPublicKey: context.guardPublicKey.toStringDer(),

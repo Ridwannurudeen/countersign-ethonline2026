@@ -1,8 +1,9 @@
 # Countersign security invariants
 
-This document covers the HBAR schedule validator, explicit HTS refusal boundary, paid review
-service, and credentialed testnet spike. Approval depends on an owner-signed mandate,
-guard-controlled policy, and a schedule independently resolved from Hedera consensus.
+This document covers the HBAR schedule validator, its explicit HTS refusal boundary,
+the frozen-transfer countersign core, paid review service, and credentialed testnet spike.
+Approval depends on an owner-signed mandate and guard-controlled policy. Schedule
+approval also requires a schedule independently resolved from Hedera consensus.
 
 ## Trust boundaries
 
@@ -49,7 +50,26 @@ Inputs that are never trusted on their own:
 
 ## Residual limitations
 
-- The guard approves a ScheduleID; it does not sign the scheduled body bytes.
+The frozen-transfer core permits a schema-v2 HTS mandate only after validating the
+exact signed bytes and querying the mandate's token with `TokenInfoQuery` during
+that review. The guard controls the injected query service; caller-supplied token
+metadata cannot authorize a transfer. The returned token ID must match the mandate.
+`HTS custom fee list is empty` requires `TokenInfo.customFees.length === 0`;
+`HTS fee schedule is immutable` requires `TokenInfo.feeScheduleKey === null`.
+Missing or failed lookups refuse authorization. Every review reads again, without
+caching. The mandate cap applies to token base units; the existing
+`maxAmountTinybars` field name is retained. Token approval retains the same byte
+re-encode equality, fixed HBAR transaction fee, validity, signature, allowlist,
+balanced treasury debit, and transfer-field checks as HBAR approval.
+
+- Token fee state is read at review time, while the transfer executes seconds later.
+  This leaves a narrow time-of-check-to-time-of-use window. A token whose fee schedule
+  is immutable cannot change that schedule, but the guard's guarantee for any token
+  is **"as read at review time"**. The guard does not read token state atomically with
+  execution or attest to its state at execution. This is testnet authorization only;
+  no live USDC purchase or mainnet behavior is established by the offline tests.
+- On the `/review` schedule path, the guard approves a ScheduleID; it does not sign
+  the scheduled body bytes.
   `ScheduleSignTransaction` builds a `scheduleSign` operation containing only the
   ScheduleID. Safety therefore depends on independently resolving and completely
   validating the consensus schedule before submitting that approval.
@@ -64,9 +84,10 @@ Inputs that are never trusted on their own:
   version triples are checked on one node before and after the schedule read and any
   triple mismatch fails closed. This is node-local provenance; it does not prove that
   every node in the network is running the same software.
-- Schema v2 can name one HTS token and the validator checks its decoded fungible-transfer
-  structure, but HTS approval remains disabled. The resolver does not yet bind the review
-  to consensus-resolved `TokenInfo.customFees` and `TokenInfo.feeScheduleKey`; without proof
+- On `/review`, schema v2 can name one HTS token and the validator checks its decoded
+  fungible-transfer structure, but HTS schedule approval remains disabled. The schedule
+  resolver does not yet bind the review to consensus-resolved `TokenInfo.customFees`
+  and `TokenInfo.feeScheduleKey`; without proof
   that fees are empty and immutable, token custom fees could introduce additional value
   movements outside the scheduled transfer list.
 - The outer `1-of` treasury key has a direct owner branch. The owner key alone can
