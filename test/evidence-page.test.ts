@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   executePage,
   manifestWithRecords,
+  mirrorPrefix,
   mirrorSchedule,
   reviewRecord,
 } from "./page-harness.ts";
@@ -209,7 +210,7 @@ test("INVARIANT: contradictory evidence must override the recorded refusal", asy
   const page = await executePage("evidence", manifestWithRecords(), async () => Response.json({
     ...mirrorSchedule,
     executed_timestamp: "1788509000.000000001",
-    signatures: [{ public_key_prefix: reviewRecord.guardPublicKeyPrefix.toUpperCase() }],
+    signatures: [{ public_key_prefix: mirrorPrefix(reviewRecord.guardPublicKeyPrefix) }],
   }));
   await page.done;
   const text = page.element("#operator-list").textContent;
@@ -230,7 +231,7 @@ test("INVARIANT: evidence records must interpret signatures with their own guard
     const record = records.find((candidate) => candidate.mirrorNodeUrl === url)!;
     return Response.json({
       ...mirrorSchedule,
-      signatures: [{ public_key_prefix: record.guardPublicKeyPrefix }],
+      signatures: [{ public_key_prefix: mirrorPrefix(record.guardPublicKeyPrefix) }],
     });
   });
   await page.done;

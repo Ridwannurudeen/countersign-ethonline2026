@@ -1,0 +1,40 @@
+{
+  "comment": "Verbatim Hedera testnet mirror-node responses captured 2026-09-12 from the first live Countersign run. public_key_prefix is base64 (OpenAPI format: byte), not hex.",
+  "executed": {
+    "scheduleId": "0.0.10499430",
+    "response": {
+      "creator_account_id": "0.0.10499425",
+      "payer_account_id": "0.0.10499425",
+      "executed_timestamp": "1789211165.040190332",
+      "deleted": false,
+      "signatures": [
+        {
+          "public_key_prefix": "sDdrhWDah9uVw7XOarYyznb1XdLdkWAsj119cDtLbdA=",
+          "type": "ED25519"
+        },
+        {
+          "public_key_prefix": "Xf+/0u7x8+OyxjZIGXCNVcb40E6qp6LHjEZcl6kfMAc=",
+          "type": "ED25519"
+        }
+      ]
+    }
+  },
+  "pending": {
+    "scheduleId": "0.0.10499432",
+    "response": {
+      "creator_account_id": "0.0.10499425",
+      "payer_account_id": "0.0.10499425",
+      "executed_timestamp": null,
+      "deleted": false,
+      "signatures": [
+        {
+          "public_key_prefix": "sDdrhWDah9uVw7XOarYyznb1XdLdkWAsj119cDtLbdA=",
+          "type": "ED25519"
+        }
+      ]
+    }
+  },
+  "agentAccountId": "0.0.10499425",
+  "agentPublicKeyHex": "b0376b8560da87db95c3b5ce6ab632ce76f55dd2dd91602c8f5d7d703b4b6dd0",
+  "guardPublicKeyHex": "5dffbfd2eef1f3e3b2c6364819708d55c6f8d04eaaa7a2c78c465c97a91f3007"
+}

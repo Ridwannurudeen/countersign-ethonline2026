@@ -312,6 +312,26 @@
         return value;
       }
 
+      function decodeMirrorPublicKeyPrefix(value, field) {
+        if (typeof value !== "string" || value.length === 0) {
+          throw new TypeError(`${field} must be a non-empty string`);
+        }
+        let binary;
+        try {
+          binary = atob(value);
+        } catch {
+          throw new TypeError(`${field} must be canonical base64`);
+        }
+        if (binary.length === 0 || btoa(binary) !== value) {
+          throw new TypeError(`${field} must be canonical base64`);
+        }
+        let hex = "";
+        for (let index = 0; index < binary.length; index += 1) {
+          hex += binary.charCodeAt(index).toString(16).padStart(2, "0");
+        }
+        return hex;
+      }
+
       function requireMirrorUrl(value, scheduleId) {
         if (typeof value !== "string" || value.length === 0) {
           throw new TypeError("mirrorNodeUrl must be a non-empty string");
@@ -401,15 +421,10 @@
 
         const signerPrefixes = schedule.signatures.map((value, index) => {
           const signature = requireRecord(value, `signatures[${index}]`);
-          if (
-            typeof signature.public_key_prefix !== "string" ||
-            !/^(?:[0-9a-fA-F]{2})+$/.test(signature.public_key_prefix)
-          ) {
-            throw new TypeError(
-              `signatures[${index}].public_key_prefix must be hexadecimal`,
-            );
-          }
-          return signature.public_key_prefix.toLowerCase();
+          return decodeMirrorPublicKeyPrefix(
+            signature.public_key_prefix,
+            `signatures[${index}].public_key_prefix`,
+          );
         });
 
         return {

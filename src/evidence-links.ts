@@ -42,6 +42,15 @@ function requireNumericEntityId(value: string, field: string): string {
   return value;
 }
 
+function decodeMirrorPublicKeyPrefix(value: string, field: string): string {
+  const bytes = Buffer.from(value, "base64");
+  if (bytes.length === 0 || bytes.toString("base64") !== value) {
+    throw new Error(`${field} must be canonical base64`);
+  }
+
+  return bytes.toString("hex");
+}
+
 function containsPublicKeyPrefix(
   publicKeyPrefixes: readonly string[],
   publicKeyHex: string,
@@ -61,10 +70,14 @@ function assertCommonScheduleEvidence(
   expected: ExpectedScheduleEvidence,
 ): void {
   if (evidence.creatorAccountId !== expected.expectedAgentAccountId) {
-    throw new Error("mirror evidence creator_account_id does not match the agent");
+    throw new Error(
+      "mirror evidence creator_account_id does not match the agent",
+    );
   }
   if (evidence.payerAccountId !== expected.expectedAgentAccountId) {
-    throw new Error("mirror evidence payer_account_id does not match the agent");
+    throw new Error(
+      "mirror evidence payer_account_id does not match the agent",
+    );
   }
   if (evidence.deleted) {
     throw new Error("mirror evidence reports the schedule as deleted");
@@ -79,15 +92,16 @@ function assertCommonScheduleEvidence(
   }
 }
 
-export function scheduleMirrorNodeUrl(scheduleId: { toString(): string }): string {
-  const value = requireNumericEntityId(
-    scheduleId.toString(),
-    "scheduleId",
-  );
+export function scheduleMirrorNodeUrl(scheduleId: {
+  toString(): string;
+}): string {
+  const value = requireNumericEntityId(scheduleId.toString(), "scheduleId");
   return `${mirrorNodeBaseUrl}/schedules/${value}`;
 }
 
-export function accountMirrorNodeUrl(accountId: { toString(): string }): string {
+export function accountMirrorNodeUrl(accountId: {
+  toString(): string;
+}): string {
   const value = requireNumericEntityId(accountId.toString(), "accountId");
   return `${mirrorNodeBaseUrl}/accounts/${value}`;
 }
@@ -124,12 +138,10 @@ export function parseScheduleEvidence(value: unknown): ScheduleEvidence {
       requireRecord(signature, `signatures[${index}]`).public_key_prefix,
       `signatures[${index}].public_key_prefix`,
     );
-    if (!publicKeyHexPattern.test(prefix)) {
-      throw new Error(
-        `signatures[${index}].public_key_prefix must be hexadecimal`,
-      );
-    }
-    return prefix.toLowerCase();
+    return decodeMirrorPublicKeyPrefix(
+      prefix,
+      `signatures[${index}].public_key_prefix`,
+    );
   });
 
   return {
@@ -155,7 +167,9 @@ export function assertPendingScheduleEvidence(
       expected.guardPublicKeyHex,
     )
   ) {
-    throw new Error("guard key prefix must be absent from pending mirror evidence");
+    throw new Error(
+      "guard key prefix must be absent from pending mirror evidence",
+    );
   }
 }
 
@@ -173,6 +187,8 @@ export function assertExecutedScheduleEvidence(
       expected.guardPublicKeyHex,
     )
   ) {
-    throw new Error("guard key prefix must be present in executed mirror evidence");
+    throw new Error(
+      "guard key prefix must be present in executed mirror evidence",
+    );
   }
 }

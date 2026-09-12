@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   executePage,
   manifestWithRecords,
+  mirrorPrefix,
   mirrorSchedule,
   reviewRecord,
 } from "./page-harness.ts";
@@ -55,19 +56,19 @@ test("INVARIANT: mirror facts remain distinct from manifest facts", async () => 
 });
 
 test("INVARIANT: guard signature matching must be exact", async () => {
-  for (const prefix of [
-    reviewRecord.guardPublicKeyPrefix.toUpperCase(),
+  for (const hexPrefix of [
+    reviewRecord.guardPublicKeyPrefix,
     `${reviewRecord.guardPublicKeyPrefix}aa`,
   ]) {
     const page = await executePage("replay", manifestWithRecords(), async () =>
       Response.json({
         ...mirrorSchedule,
-        signatures: [{ public_key_prefix: prefix }],
+        signatures: [{ public_key_prefix: mirrorPrefix(hexPrefix) }],
       }),
     );
     assert.match(
       page.element("#chain").children[4]!.textContent,
-      prefix.length === reviewRecord.guardPublicKeyPrefix.length
+      hexPrefix.length === reviewRecord.guardPublicKeyPrefix.length
         ? /Verification mismatch.*present/
         : /Never happened.*absent/,
     );
@@ -184,7 +185,7 @@ test("INVARIANT: contradictory mirror facts must override the recorded refusal",
   const page = await executePage("replay", manifestWithRecords(), async () => Response.json({
     ...mirrorSchedule,
     executed_timestamp: "1788509000.000000001",
-    signatures: [{ public_key_prefix: reviewRecord.guardPublicKeyPrefix }],
+    signatures: [{ public_key_prefix: mirrorPrefix(reviewRecord.guardPublicKeyPrefix) }],
   }));
   for (const index of [4, 5]) {
     assert.match(
@@ -208,7 +209,7 @@ test("INVARIANT: each replay record must use its own guard identity across selec
     const record = records.find((candidate) => candidate.mirrorNodeUrl === url)!;
     return Response.json({
       ...mirrorSchedule,
-      signatures: [{ public_key_prefix: record.guardPublicKeyPrefix }],
+      signatures: [{ public_key_prefix: mirrorPrefix(record.guardPublicKeyPrefix) }],
     });
   });
   for (const record of [reviewRecord, second, reviewRecord]) {

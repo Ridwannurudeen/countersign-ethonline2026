@@ -7,7 +7,10 @@ import { parseEvidenceManifest } from "../src/evidence-manifest.ts";
 
 const fixture = parseEvidenceManifest(
   JSON.parse(
-    await readFile(new URL("./fixtures/replay-evidence.json", import.meta.url), "utf8"),
+    await readFile(
+      new URL("./fixtures/replay-evidence.json", import.meta.url),
+      "utf8",
+    ),
   ),
 );
 
@@ -17,13 +20,18 @@ export function manifestWithRecords(records = [reviewRecord]) {
   return { ...fixture, records };
 }
 
+// The mirror node returns public_key_prefix as base64 (OpenAPI format: byte).
+export function mirrorPrefix(publicKeyHex: string): string {
+  return Buffer.from(publicKeyHex, "hex").toString("base64");
+}
+
 export const mirrorSchedule = {
   creator_account_id: "0.0.8001",
   payer_account_id: "0.0.8001",
   memo: reviewRecord.mandateDigest,
   deleted: false,
   executed_timestamp: null,
-  signatures: [{ public_key_prefix: "aaaa" }],
+  signatures: [{ public_key_prefix: mirrorPrefix("aaaa") }],
 };
 
 class PageElement {
@@ -37,7 +45,9 @@ class PageElement {
   private listeners = new Map<string, () => void>();
 
   get textContent(): string {
-    return this.text + this.children.map((child) => child.textContent).join(" ");
+    return (
+      this.text + this.children.map((child) => child.textContent).join(" ")
+    );
   }
 
   set textContent(value: string) {
@@ -81,7 +91,9 @@ export async function executePage(
     new URL(`../web/${page}.html`, import.meta.url),
     "utf8",
   );
-  const script = source.match(/<script type="module">([\s\S]*?)<\/script>/)?.[1];
+  const script = source.match(
+    /<script type="module">([\s\S]*?)<\/script>/,
+  )?.[1];
   assert.ok(script, "page must contain its executable module");
   const elements = new Map<string, PageElement>();
   for (const match of source.matchAll(/<[^>]+\bid="([^"]+)"[^>]*>([^<]*)/g)) {
@@ -99,7 +111,9 @@ export async function executePage(
     },
     fetch: async (url: string) => {
       requests.push(url);
-      return url === "./evidence.json" ? Response.json(manifest) : mirrorFetch(url);
+      return url === "./evidence.json"
+        ? Response.json(manifest)
+        : mirrorFetch(url);
     },
     window: {
       location,
@@ -112,6 +126,8 @@ export async function executePage(
     URL,
     URLSearchParams,
     Error,
+    atob,
+    btoa,
   }) as Promise<void>;
   await setImmediate();
   return {
