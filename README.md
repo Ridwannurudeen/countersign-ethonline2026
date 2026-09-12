@@ -33,10 +33,12 @@ The caller pays the same review price either way — a refusal is a delivered se
 failed request. Both settlements were completed by the Blocky402 facilitator on
 `hedera:testnet`.
 
+The table above is one representative approved/refused pair. `web/evidence.json` is
+regenerated from every recorded run by `npm run build-evidence` and is the complete record.
+
 These are **operator-run reliability exercises, not users**, and testnet payments are
-**paid protocol trials, not revenue**. `web/evidence.json` was generated from those runs by
-`npm run build-evidence`, labels every record `operator`, and reports zero external
-reviews and zero distinct external payer accounts.
+**paid protocol trials, not revenue**. The manifest labels every record `operator` and
+reports zero external reviews and zero distinct external payer accounts.
 
 ## Current scope
 
