@@ -597,12 +597,21 @@ export async function runLiveFlow(outcome: LiveFlowOutcome): Promise<void> {
 
     mkdirSync(resolve("var"), { recursive: true });
     server = await createProductionReviewServer(guardClient, {
-      tenantId: envelope.mandate.tenantId,
-      ownerPublicKey: ownerPrivateKey.publicKey,
-      agentPublicKey: agentPrivateKey.publicKey,
+      tenants: new Map([[envelope.mandate.tenantId, {
+        ownerPublicKey: ownerPrivateKey.publicKey,
+        agentPublicKey: agentPrivateKey.publicKey,
+        expectedAgentAccountId: agentAccountId.toString(),
+        treasuryAccountId: treasuryAccountId.toString(),
+          agentIdentity: {
+          registry: "countersign",
+          name: "Countersign Agent",
+          version: "0.1.0",
+          protocol: "hcs-10",
+          nativeId: `hedera:testnet:${agentAccountId.toString()}`,
+          skills: [],
+        },
+      }]]),
       guardPublicKey: guardPrivateKey.publicKey,
-      expectedAgentAccountId: agentAccountId.toString(),
-      treasuryAccountId: treasuryAccountId.toString(),
       protocolMaxFeeTinybars: PROTOCOL_MAX_FEE_TINYBARS,
       allowedNetworkVersions: {
         protobuf: environment.allowedProtobufVersion,
@@ -620,23 +629,13 @@ export async function runLiveFlow(outcome: LiveFlowOutcome): Promise<void> {
           publicKey: operatorPrivateKey.publicKey,
         },
       },
-      participantIdentities: {
-        agent: {
-          registry: "countersign",
-          name: "Countersign Agent",
-          version: "0.1.0",
-          protocol: "hcs-10",
-          nativeId: `hedera:testnet:${agentAccountId.toString()}`,
-          skills: [],
-        },
-        guard: {
+      guardIdentity: {
           registry: "countersign",
           name: "Countersign Guard",
           version: "0.1.0",
           protocol: "hcs-10",
           nativeId: `hedera:testnet:${guardAccountId.toString()}`,
           skills: [],
-        },
       },
       reviewObserver: {
         onPaymentSettled(settlementId) {

@@ -53,12 +53,12 @@ const baseConfig: PaymentGateConfig = {
     accountId: "0.0.9001",
     publicKey: operationalKey,
   },
-  treasuryAuthorization: {
+  treasuryAuthorizations: [{
     accountId: "0.0.1001",
     ownerPublicKey: ownerKey,
     agentPublicKey: agentKey,
     guardPublicKey: guardKey,
-  },
+  }],
 };
 
 class OfflineFacilitator implements FacilitatorClient {
@@ -349,7 +349,7 @@ test("payment gate refuses the treasury account as payer before settlement", asy
   const facilitator = new OfflineFacilitator();
   const paymentHeader = await createPaymentSignatureHeader(
     facilitator,
-    baseConfig.treasuryAuthorization.accountId,
+    baseConfig.treasuryAuthorizations[0].accountId,
     paymentPayerKey,
   );
   const gate = await createPaymentGate(baseConfig, facilitator);
@@ -440,7 +440,7 @@ test("invariant: the decoded payment payload contains no treasury authorization 
     paymentPayerAccountId,
   );
   for (const authorizationAccountId of [
-    baseConfig.treasuryAuthorization.accountId,
+    baseConfig.treasuryAuthorizations[0].accountId,
     "0.0.2001",
     "0.0.3001",
   ]) {
@@ -464,7 +464,7 @@ test("payment gate refuses the treasury account as the payment account", async (
         ...baseConfig,
         operationalAccount: {
           ...baseConfig.operationalAccount,
-          accountId: baseConfig.treasuryAuthorization.accountId,
+          accountId: baseConfig.treasuryAuthorizations[0].accountId,
         },
       },
       facilitator,
@@ -559,7 +559,7 @@ test("INVARIANT: a payment whose token sender is the treasury account must be re
   const facilitator = new OfflineFacilitator();
   const paymentHeader = await createTokenPaymentSignatureHeader(
     facilitator,
-    baseConfig.treasuryAuthorization.accountId,
+    baseConfig.treasuryAuthorizations[0].accountId,
     paymentPayerKey,
   );
   const gate = await createPaymentGate(baseConfig, facilitator);

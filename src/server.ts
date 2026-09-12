@@ -63,7 +63,10 @@ interface ParsedReviewRequest {
 
 export interface ResolvedSchedule {
   info: ReviewableScheduleInfo;
-  context: Omit<ReviewContext, "requestedScheduleId">;
+  context: Omit<ReviewContext,
+    "requestedScheduleId" | "treasuryAccountId" | "expectedAgentAccountId" |
+    "agentPublicKey" | "guardPublicKey"
+  >;
   refusalReason?: string;
 }
 
@@ -82,11 +85,22 @@ type ReviewResponseBody = ReviewResponseOutcome & {
   mirrorNodeUrl: string;
 };
 
-export interface ReviewServerDependencies {
-  tenantId: string;
+export interface ReviewTenant {
   ownerPublicKey: PublicKey;
+  agentPublicKey: PublicKey;
+  expectedAgentAccountId: string;
+  treasuryAccountId: string;
+}
+
+export interface ProductionReviewTenant extends ReviewTenant {
+  agentIdentity: Hcs14AgentIdentity;
+}
+
+export interface ReviewServerDependencies {
+  tenants: ReadonlyMap<string, ReviewTenant & { agentIdentifier: string }>;
   guardPublicKey: PublicKey;
   paymentGate: PaymentGate;
+  payment: Pick<PaymentGateConfig, "resourceUrl" | "priceTinybars">;
   lookupCompletedReview(
     reservation: MandateReviewReservation,
   ): Awaitable<CompletedMandateReview | null>;
@@ -101,7 +115,6 @@ export interface ReviewServerDependencies {
   ): Awaitable<void>;
   verdictLog: VerdictLog;
   participantIdentifiers: {
-    agent: string;
     guard: string;
   };
   reviewObserver?: ReviewObserver;
@@ -113,21 +126,14 @@ export interface ReviewObserver {
 }
 
 export interface ProductionReviewServerConfig {
-  tenantId: string;
-  ownerPublicKey: PublicKey;
-  agentPublicKey: PublicKey;
+  tenants: ReadonlyMap<string, ProductionReviewTenant>;
   guardPublicKey: PublicKey;
-  expectedAgentAccountId: string;
-  treasuryAccountId: string;
   protocolMaxFeeTinybars: string;
   allowedNetworkVersions: ReviewContext["allowedNetworkVersions"];
   replayDatabasePath: string;
-  payment: Omit<PaymentGateConfig, "treasuryAuthorization">;
+  payment: Omit<PaymentGateConfig, "treasuryAuthorizations">;
   verdictTopicId?: string;
-  participantIdentities: {
-    agent: Hcs14AgentIdentity;
-    guard: Hcs14AgentIdentity;
-  };
+  guardIdentity: Hcs14AgentIdentity;
   reviewObserver?: ReviewObserver;
 }
 
@@ -323,7 +329,7 @@ async function recordOutcome(
     mandateDigest: digest,
     settlementId,
     tenantId: request.tenantId,
-    agentIdentifier: dependencies.participantIdentifiers.agent,
+    agentIdentifier: dependencies.tenants.get(request.tenantId)!.agentIdentifier,
     guardIdentifier: dependencies.participantIdentifiers.guard,
   };
   const receipt = await dependencies.verdictLog.record(record);
@@ -369,6 +375,31 @@ async function handleReviewRequest(
   dependencies: ReviewServerDependencies,
 ): Promise<void> {
   const path = new URL(incoming.url ?? "/", "http://localhost").pathname;
+  if (path === "/.well-known/agent.json" && incoming.method === "GET") {
+    const reviewUrl = new URL("/review", dependencies.payment.resourceUrl).href;
+    writeJson(response, 200, {
+      name: "Countersign Guard",
+      description: "Paid authorization review of Hedera schedules against owner-signed policy mandates.",
+      uaid: dependencies.participantIdentifiers.guard,
+      guardPublicKey: dependencies.guardPublicKey.toString(),
+      url: reviewUrl,
+      service: [{ id: "review", type: "HTTP", serviceEndpoint: reviewUrl, method: "POST" }],
+      capabilities: {
+        extensions: [{
+          uri: "https://www.x402.org/",
+          description: "x402 payment required for each authorization review; settled through Blocky402.",
+          required: true,
+          params: {
+            network: "hedera:testnet",
+            asset: "0.0.0",
+            priceTinybars: dependencies.payment.priceTinybars,
+          },
+        }],
+      },
+      tenantCount: dependencies.tenants.size,
+    });
+    return;
+  }
   if (path === "/guard" && incoming.method === "GET") {
     writeJson(response, 200, {
       guardPublicKey: dependencies.guardPublicKey.toString(),
@@ -385,16 +416,14 @@ async function handleReviewRequest(
   }
 
   const parsedRequest = parseReviewRequest(await readJsonBody(incoming));
-  if (parsedRequest.tenantId !== dependencies.tenantId) {
-    throw new RequestError(
-      403,
-      "mandate tenant does not match the configured tenant",
-    );
+  const tenant = dependencies.tenants.get(parsedRequest.tenantId);
+  if (tenant === undefined) {
+    throw new RequestError(403, "mandate tenant is not authorized");
   }
   if (
     !verifyMandateSignature(
       parsedRequest.mandateEnvelope,
-      dependencies.ownerPublicKey,
+      tenant.ownerPublicKey,
     )
   ) {
     throw new RequestError(401, "mandate signature is invalid");
@@ -455,6 +484,10 @@ async function handleReviewRequest(
     parsedRequest.mandateEnvelope.mandate,
     {
       ...resolved.context,
+      treasuryAccountId: tenant.treasuryAccountId,
+      expectedAgentAccountId: tenant.expectedAgentAccountId,
+      agentPublicKey: tenant.agentPublicKey,
+      guardPublicKey: dependencies.guardPublicKey,
       requestedScheduleId: parsedRequest.scheduleId,
     },
     (check) => dependencies.reviewObserver?.onReviewCheck?.(check),
@@ -697,10 +730,23 @@ export async function createProductionReviewServer(
   services: ProductionReviewServerServices = productionReviewServerServices,
 ) {
   const participantIdentifiers = {
-    agent: generateHcs14Aid(config.participantIdentities.agent),
-    guard: generateHcs14Aid(config.participantIdentities.guard),
+    guard: generateHcs14Aid(config.guardIdentity),
   };
-  validateVerdictParticipantIdentifiers(participantIdentifiers);
+  const tenants = new Map<string, ProductionReviewTenant & { agentIdentifier: string }>();
+  for (const [tenantId, tenant] of config.tenants) {
+    if (tenantId.trim() === "" || tenantId !== tenantId.trim()) {
+      throw new Error("tenantId must be a non-empty trimmed string");
+    }
+    const agentIdentifier = generateHcs14Aid(tenant.agentIdentity);
+    validateVerdictParticipantIdentifiers({ ...participantIdentifiers, agent: agentIdentifier });
+    if (tenant.agentIdentity.nativeId !== `hedera:testnet:${tenant.expectedAgentAccountId}`) {
+      throw new Error(`tenant ${tenantId}: agent identity must match the configured agent account`);
+    }
+    tenants.set(tenantId, { ...tenant, agentIdentifier });
+  }
+  if (tenants.size === 0) {
+    throw new Error("at least one tenant must be configured");
+  }
   const operatorPublicKey = client.operatorPublicKey;
   if (
     operatorPublicKey === null ||
@@ -709,54 +755,36 @@ export async function createProductionReviewServer(
     throw new Error("client operator key must equal the configured guard key");
   }
 
-  if (
-    config.ownerPublicKey.equals(config.agentPublicKey) ||
-    config.ownerPublicKey.equals(config.guardPublicKey) ||
-    config.agentPublicKey.equals(config.guardPublicKey)
-  ) {
-    throw new Error("owner, agent, and guard keys must be pairwise distinct");
-  }
-
   const operatorAccountId = client.operatorAccountId;
   if (operatorAccountId === null) {
     throw new Error("client operator account is required");
   }
-  if (
-    [
-      config.treasuryAccountId,
-      config.expectedAgentAccountId,
-      operatorAccountId.toString(),
-    ].includes(config.payment.operationalAccount.accountId) ||
-    [config.ownerPublicKey, config.agentPublicKey, config.guardPublicKey].some(
-      (key) => config.payment.operationalAccount.publicKey.equals(key),
-    )
-  ) {
-    throw new Error(
-      "operational payment identity must be separate from authorization identities",
-    );
+  for (const [tenantId, tenant] of tenants) {
+    if (
+      tenant.ownerPublicKey.equals(tenant.agentPublicKey) ||
+      tenant.ownerPublicKey.equals(config.guardPublicKey) ||
+      tenant.agentPublicKey.equals(config.guardPublicKey)
+    ) {
+      throw new Error(`tenant ${tenantId}: owner, agent, and guard keys must be pairwise distinct`);
+    }
+    if (
+      [tenant.treasuryAccountId, tenant.expectedAgentAccountId, operatorAccountId.toString()]
+        .includes(config.payment.operationalAccount.accountId) ||
+      [tenant.ownerPublicKey, tenant.agentPublicKey, config.guardPublicKey].some(
+        (key) => config.payment.operationalAccount.publicKey.equals(key),
+      )
+    ) {
+      throw new Error(`tenant ${tenantId}: operational payment identity must be separate from authorization identities`);
+    }
   }
 
   const consensusNode = configuredConsensusNode(client);
-  const [operationalAccount, treasuryAccount, agentAccount] = await Promise.all([
-    services.executeAccountInfoQuery(
-      client,
-      new AccountInfoQuery()
-        .setAccountId(config.payment.operationalAccount.accountId)
-        .setNodeAccountIds([consensusNode]),
-    ),
-    services.executeAccountInfoQuery(
-      client,
-      new AccountInfoQuery()
-        .setAccountId(config.treasuryAccountId)
-        .setNodeAccountIds([consensusNode]),
-    ),
-    services.executeAccountInfoQuery(
-      client,
-      new AccountInfoQuery()
-        .setAccountId(config.expectedAgentAccountId)
-        .setNodeAccountIds([consensusNode]),
-    ),
-  ]);
+  const operationalAccount = await services.executeAccountInfoQuery(
+    client,
+    new AccountInfoQuery()
+      .setAccountId(config.payment.operationalAccount.accountId)
+      .setNodeAccountIds([consensusNode]),
+  );
 
   if (
     operationalAccount.accountId !==
@@ -775,47 +803,63 @@ export async function createProductionReviewServer(
       "operational payment account key does not match the configured operational key",
     );
   }
-  if (treasuryAccount.accountId !== config.treasuryAccountId) {
-    throw new Error(
-      "returned treasury account does not match the configured account",
-    );
-  }
-  if (
-    !hasExpectedTreasuryKey(
-      treasuryAccount.key,
-      config.ownerPublicKey,
-      config.agentPublicKey,
-      config.guardPublicKey,
-    )
-  ) {
-    throw new Error(
-      "treasury account must use the configured nested authorization tree",
-    );
-  }
-  if (agentAccount.accountId !== config.expectedAgentAccountId) {
-    throw new Error(
-      "returned agent account does not match the configured account",
-    );
-  }
-  if (
-    !(agentAccount.key instanceof PublicKey) ||
-    !agentAccount.key.equals(config.agentPublicKey)
-  ) {
-    throw new Error(
-      "agent account key does not match the configured agent key",
-    );
+  for (const [tenantId, tenant] of tenants) {
+    try {
+      const treasuryAccount = await services.executeAccountInfoQuery(
+        client,
+        new AccountInfoQuery().setAccountId(tenant.treasuryAccountId)
+          .setNodeAccountIds([consensusNode]),
+      );
+      const agentAccount = await services.executeAccountInfoQuery(
+        client,
+        new AccountInfoQuery().setAccountId(tenant.expectedAgentAccountId)
+          .setNodeAccountIds([consensusNode]),
+      );
+      if (treasuryAccount.accountId !== tenant.treasuryAccountId) {
+        throw new Error(
+          "returned treasury account does not match the configured account",
+        );
+      }
+      if (
+        !hasExpectedTreasuryKey(
+          treasuryAccount.key,
+          tenant.ownerPublicKey,
+          tenant.agentPublicKey,
+          config.guardPublicKey,
+        )
+      ) {
+        throw new Error(
+          "treasury account must use the configured nested authorization tree",
+        );
+      }
+      if (agentAccount.accountId !== tenant.expectedAgentAccountId) {
+        throw new Error(
+          "returned agent account does not match the configured account",
+        );
+      }
+      if (
+        !(agentAccount.key instanceof PublicKey) ||
+        !agentAccount.key.equals(tenant.agentPublicKey)
+      ) {
+        throw new Error(
+          "agent account key does not match the configured agent key",
+        );
+      }
+    } catch (error) {
+      throw new Error(`tenant ${tenantId}: ${error instanceof Error ? error.message : "consensus validation failed"}`, { cause: error });
+    }
   }
 
   initializeReplayStore(config.replayDatabasePath);
 
   const paymentGate = await services.createPaymentGate({
     ...config.payment,
-    treasuryAuthorization: {
-      accountId: config.treasuryAccountId,
-      ownerPublicKey: config.ownerPublicKey,
-      agentPublicKey: config.agentPublicKey,
+    treasuryAuthorizations: [...tenants.values()].map((tenant) => ({
+      accountId: tenant.treasuryAccountId,
+      ownerPublicKey: tenant.ownerPublicKey,
+      agentPublicKey: tenant.agentPublicKey,
       guardPublicKey: config.guardPublicKey,
-    },
+    })),
   });
   const verdictLog = await services.openVerdictLog(
     client,
@@ -823,10 +867,10 @@ export async function createProductionReviewServer(
   );
 
   return createReviewServer({
-    tenantId: config.tenantId,
-    ownerPublicKey: config.ownerPublicKey,
+    tenants,
     guardPublicKey: config.guardPublicKey,
     paymentGate,
+    payment: config.payment,
     lookupCompletedReview(reservation) {
       return getCompletedMandateReview(
         config.replayDatabasePath,
@@ -864,10 +908,6 @@ export async function createProductionReviewServer(
         info,
         refusalReason,
         context: {
-          expectedAgentAccountId: config.expectedAgentAccountId,
-          treasuryAccountId: config.treasuryAccountId,
-          agentPublicKey: config.agentPublicKey,
-          guardPublicKey: config.guardPublicKey,
           protocolMaxFeeTinybars: config.protocolMaxFeeTinybars,
           nowEpochSeconds: Math.floor(Date.now() / 1_000).toString(),
           networkVersions: {

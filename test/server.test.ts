@@ -32,6 +32,7 @@ import {
   type ReviewServerDependencies,
 } from "../src/server.ts";
 import type { VerdictRecord } from "../src/verdict-log.ts";
+import { generateHcs14Aid } from "../src/hcs14.ts";
 
 const ownerKey = PrivateKey.generateED25519();
 const agentPrivateKey = PrivateKey.generateED25519();
@@ -157,9 +158,15 @@ function harness(
   const verdicts: VerdictRecord[] = [];
   const completions: CompletedMandateReview[] = [];
   const dependencies: ReviewServerDependencies = {
-    tenantId: mandate.tenantId,
-    ownerPublicKey: ownerKey.publicKey,
+    tenants: new Map([[mandate.tenantId, {
+      ownerPublicKey: ownerKey.publicKey,
+      agentPublicKey: agentKey,
+      expectedAgentAccountId: "0.0.2001",
+      treasuryAccountId: "0.0.1001",
+      agentIdentifier: "uaid:aid:agent;nativeId=hedera:testnet:0.0.2001",
+    }]]),
     guardPublicKey: guardKey,
+    payment: { resourceUrl: "https://guard.example/review", priceTinybars: "1000000" },
     paymentGate: {
       async review() {
         events.push("payment");
@@ -202,7 +209,6 @@ function harness(
       },
     },
     participantIdentifiers: {
-      agent: "uaid:aid:agent;nativeId=hedera:testnet:0.0.2001",
       guard: "uaid:aid:guard;nativeId=hedera:testnet:0.0.3001",
     },
     ...overrides,
@@ -275,7 +281,7 @@ test("INVARIANT: a mandate issued for one tenant must never authorize a schedule
   });
 
   assert.equal(response.status, 403);
-  assert.match(String(json.error), /configured tenant/);
+  assert.match(String(json.error), /mandate tenant is not authorized/);
   assert.deepEqual(state.events, []);
 });
 
@@ -647,12 +653,21 @@ test("POST /review completes the approved orchestration in order", async () => {
 });
 
 const productionConfig: ProductionReviewServerConfig = {
-  tenantId: mandate.tenantId,
-  ownerPublicKey: ownerKey.publicKey,
-  agentPublicKey: agentKey,
+  tenants: new Map([[mandate.tenantId, {
+    ownerPublicKey: ownerKey.publicKey,
+    agentPublicKey: agentKey,
+    expectedAgentAccountId: "0.0.2001",
+    treasuryAccountId: "0.0.1001",
+    agentIdentity: {
+      registry: "countersign",
+      name: "Countersign Agent",
+      version: "0.1.0",
+      protocol: "hcs-10",
+      nativeId: "hedera:testnet:0.0.2001",
+      skills: [0],
+    },
+  }]]),
   guardPublicKey: guardKey,
-  expectedAgentAccountId: "0.0.2001",
-  treasuryAccountId: "0.0.1001",
   protocolMaxFeeTinybars: "100000000",
   allowedNetworkVersions: {
     protobuf: "0.64.0",
@@ -668,25 +683,17 @@ const productionConfig: ProductionReviewServerConfig = {
     },
   },
   verdictTopicId: "0.0.9100",
-  participantIdentities: {
-    agent: {
-      registry: "countersign",
-      name: "Countersign Agent",
-      version: "0.1.0",
-      protocol: "hcs-10",
-      nativeId: "hedera:testnet:0.0.2001",
-      skills: [0],
-    },
-    guard: {
+  guardIdentity: {
       registry: "countersign",
       name: "Countersign Guard",
       version: "0.1.0",
       protocol: "hcs-10",
       nativeId: "hedera:testnet:0.0.3001",
       skills: [0],
-    },
   },
 };
+
+const productionTenant = productionConfig.tenants.get(mandate.tenantId)!;
 
 test("INVARIANT: tenant owner and agent private key material must never enter server configuration or persisted state", () => {
   const databaseDirectory = resolve("var");
@@ -723,8 +730,8 @@ test("INVARIANT: tenant owner and agent private key material must never enter se
         Object.keys(config).filter((field) => /private/i.test(field)),
         [],
       );
-      assert.equal(config.ownerPublicKey instanceof PrivateKey, false);
-      assert.equal(config.agentPublicKey instanceof PrivateKey, false);
+      assert.equal(config.tenants.get(mandate.tenantId)!.ownerPublicKey instanceof PrivateKey, false);
+      assert.equal(config.tenants.get(mandate.tenantId)!.agentPublicKey instanceof PrivateKey, false);
       assert.deepEqual(
         columns.filter((column) => /(owner|agent|private).*key/i.test(column)),
         [],
@@ -762,10 +769,10 @@ function productionServices(
       if (accountId === productionConfig.payment.operationalAccount.accountId) {
         return { accountId, key: operationalKey };
       }
-      if (accountId === productionConfig.treasuryAccountId) {
+      if (accountId === productionTenant.treasuryAccountId) {
         return { accountId, key: treasuryKey };
       }
-      if (accountId === productionConfig.expectedAgentAccountId) {
+      if (accountId === productionTenant.expectedAgentAccountId) {
         return { accountId, key: agentKey };
       }
       throw new Error(`unexpected account lookup: ${accountId}`);
@@ -847,11 +854,11 @@ test("production server requires pairwise-distinct authorization keys", async (t
   for (const [name, config] of [
     [
       "owner and agent",
-      { ...productionConfig, agentPublicKey: ownerKey.publicKey },
+      { ...productionConfig, tenants: new Map([[mandate.tenantId, { ...productionTenant, agentPublicKey: ownerKey.publicKey }]]) },
     ],
     [
       "owner and guard",
-      { ...productionConfig, ownerPublicKey: guardKey },
+      { ...productionConfig, tenants: new Map([[mandate.tenantId, { ...productionTenant, ownerPublicKey: guardKey }]]) },
     ],
     [
       "agent and guard",
@@ -911,10 +918,10 @@ test("production server requires the exact nested treasury authorization tree", 
               async executeAccountInfoQuery(client, query) {
                 if (
                   query.accountId?.toString() ===
-                  productionConfig.treasuryAccountId
+                  productionTenant.treasuryAccountId
                 ) {
                   return {
-                    accountId: productionConfig.treasuryAccountId,
+                    accountId: productionTenant.treasuryAccountId,
                     key,
                   };
                 }
@@ -934,6 +941,58 @@ test("production server requires the exact nested treasury authorization tree", 
   }
 });
 
+test("INVARIANT: startup refuses a second tenant whose treasury key tree does not contain the guard key and names that tenant", async () => {
+  const client = configuredClient();
+  const databasePath = resolve("var", `second-tenant-${process.pid}.sqlite`);
+  const secondTenant = {
+    ...productionTenant,
+    treasuryAccountId: "0.0.1003",
+    expectedAgentAccountId: "0.0.2003",
+    agentIdentity: {
+      ...productionTenant.agentIdentity,
+      nativeId: "hedera:testnet:0.0.2003",
+    },
+  };
+  const accounts: string[] = [];
+  let server: ReturnType<typeof createReviewServer> | undefined;
+  try {
+    await assert.rejects(async () => {
+      server = await createProductionReviewServer(client, {
+        ...productionConfig,
+        replayDatabasePath: databasePath,
+        tenants: new Map([
+          [mandate.tenantId, productionTenant],
+          ["treasury-2", secondTenant],
+        ]),
+      }, productionServices({
+        async executeAccountInfoQuery(client, query) {
+          const accountId = query.accountId!.toString();
+          accounts.push(accountId);
+          if (accountId === secondTenant.treasuryAccountId) {
+            return {
+              accountId,
+              key: new KeyList([
+                ownerKey.publicKey,
+                new KeyList([agentKey, operationalKey], 2),
+              ], 1),
+            };
+          }
+          if (accountId === secondTenant.expectedAgentAccountId) {
+            return { accountId, key: agentKey };
+          }
+          return productionServices().executeAccountInfoQuery(client, query);
+        },
+      }));
+    }, /^Error: tenant treasury-2: treasury account must use the configured nested authorization tree$/);
+    assert.ok(accounts.includes(productionTenant.treasuryAccountId));
+    assert.ok(accounts.includes(secondTenant.treasuryAccountId));
+  } finally {
+    server?.close();
+    client.close();
+    rmSync(databasePath, { force: true });
+  }
+});
+
 test("production server binds the configured agent account to the agent key", async (t) => {
   for (const [name, accountId, key, reason] of [
     [
@@ -944,7 +1003,7 @@ test("production server binds the configured agent account to the agent key", as
     ],
     [
       "different key",
-      productionConfig.expectedAgentAccountId,
+      productionTenant.expectedAgentAccountId,
       operationalKey,
       /agent account key does not match the configured agent key/,
     ],
@@ -960,7 +1019,7 @@ test("production server binds the configured agent account to the agent key", as
               async executeAccountInfoQuery(client, query) {
                 if (
                   query.accountId?.toString() ===
-                  productionConfig.expectedAgentAccountId
+                  productionTenant.expectedAgentAccountId
                 ) {
                   return { accountId, key };
                 }
@@ -1242,13 +1301,10 @@ test("production server generates participant identifiers from HCS-14 identities
         client,
         {
           ...productionConfig,
-          participantIdentities: {
-            ...productionConfig.participantIdentities,
-            agent: {
-              ...productionConfig.participantIdentities.agent,
-              nativeId: "not-a-hedera-account",
-            },
-          },
+          tenants: new Map([[mandate.tenantId, {
+            ...productionTenant,
+            agentIdentity: { ...productionTenant.agentIdentity, nativeId: "not-a-hedera-account" },
+          }]]),
         },
         productionServices(),
       ),
@@ -1306,7 +1362,7 @@ test("INVARIANT: the public guard identity response never contains private key m
     "guardPublicKey",
   ]);
   assert.equal(serialized.includes(guardPrivateKey.toStringRaw()), false);
-  assert.equal(serialized.includes(state.dependencies.tenantId), false);
+  assert.equal(serialized.includes(mandate.tenantId), false);
 });
 
 test("GET /guard succeeds without a payment header", async () => {
@@ -1315,4 +1371,53 @@ test("GET /guard succeeds without a payment header", async () => {
 
   assert.equal(response.status, 200);
   assert.deepEqual(state.events, []);
+});
+
+test("GET /.well-known/agent.json publishes the configured public review endpoint and payment terms without tenant data or payment", async () => {
+  const client = configuredClient();
+  const databasePath = resolve("var", `agent-card-${process.pid}.sqlite`);
+  let paymentCalls = 0;
+  const config = {
+    ...productionConfig,
+    replayDatabasePath: databasePath,
+    payment: { ...productionConfig.payment, resourceUrl: "https://public-guard.example:8443/review", priceTinybars: "2000000" },
+  };
+  const server = await createProductionReviewServer(client, config, productionServices({
+    async createPaymentGate() {
+      return { async review() { paymentCalls += 1; throw new Error("card must be unpaid"); } };
+    },
+  }));
+  try {
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address() as AddressInfo;
+    const response = await fetch(`http://127.0.0.1:${address.port}/.well-known/agent.json`);
+    assert.equal(response.status, 200);
+    const card = await response.json();
+    assert.deepEqual(card, {
+      name: "Countersign Guard",
+      description: "Paid authorization review of Hedera schedules against owner-signed policy mandates.",
+      uaid: generateHcs14Aid(config.guardIdentity),
+      guardPublicKey: guardKey.toString(),
+      url: config.payment.resourceUrl,
+      service: [{ id: "review", type: "HTTP", serviceEndpoint: config.payment.resourceUrl, method: "POST" }],
+      capabilities: {
+        extensions: [{
+          uri: "https://www.x402.org/",
+          description: "x402 payment required for each authorization review; settled through Blocky402.",
+          required: true,
+          params: { network: "hedera:testnet", asset: "0.0.0", priceTinybars: "2000000" },
+        }],
+      },
+      tenantCount: 1,
+    });
+    const serialized = JSON.stringify(card);
+    for (const value of [mandate.tenantId, productionTenant.treasuryAccountId, productionTenant.expectedAgentAccountId, ownerKey.publicKey.toString(), guardPrivateKey.toStringRaw(), "127.0.0.1"]) {
+      assert.equal(serialized.includes(value), false);
+    }
+    assert.equal(paymentCalls, 0);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    client.close();
+    rmSync(databasePath, { force: true });
+  }
 });

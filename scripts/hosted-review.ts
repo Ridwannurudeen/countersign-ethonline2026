@@ -33,14 +33,15 @@ import {
   type Mandate,
   type MandateEnvelope,
 } from "../src/mandate.ts";
+import { validateHcs14Identifier } from "../src/hcs14.ts";
 
 // A caller that pays the guard over the public internet.
 //
 // The narrated flows start the guard in their own process and talk to it on
 // loopback, which proves the protocol but not that the service exists for
 // anyone else. This script holds only the keys a treasury owner would hold and
-// sends its review request to whatever COUNTERSIGN_GUARD_URL points at, so the
-// guard being reviewed is a separate process on a separate machine.
+// resolves the expected guard UAID through the configured origin's agent card
+// before sending a paid authorization review to the published endpoint.
 //
 // Pass "refused" to propose a transfer to an account outside the mandate
 // allowlist. The caller pays for that review exactly as it pays for an approval.
@@ -70,10 +71,10 @@ type ReviewResponse =
       readonly reason: string;
     });
 
-function requireEnvironmentVariable(name: string): string {
-  const value = process.env[name];
+function requireEnvironmentVariable(name: string, env: NodeJS.ProcessEnv = process.env): string {
+  const value = env[name];
   if (value === undefined || value.trim() === "") {
-    throw new Error(`${name} must be set`);
+    throw new Error(`missing required environment variable: ${name}`);
   }
 
   return value.trim();
@@ -97,6 +98,80 @@ function requireString(value: unknown, field: string): string {
   }
 
   return value;
+}
+
+function guardHttpUrl(value: string): URL {
+  const url = new URL(value);
+  const loopback = ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname);
+  if (url.protocol !== "https:" && !(url.protocol === "http:" && loopback)) {
+    throw new Error("guard URL must use HTTPS, or HTTP on loopback for local runs");
+  }
+  if (url.username !== "" || url.password !== "" || url.hash !== "") {
+    throw new Error("guard URL must not contain credentials or a fragment");
+  }
+  return url;
+}
+
+export async function resolveGuard(expectedUaid: string, origin: string) {
+  validateHcs14Identifier(expectedUaid, "expected guard UAID");
+  const originUrl = guardHttpUrl(origin);
+  if (originUrl.pathname !== "/" || originUrl.search !== "") {
+    throw new Error("guard origin must not contain a path or query");
+  }
+  const response = await fetch(new URL("/.well-known/agent.json", originUrl), {
+    headers: { accept: "application/json" },
+    redirect: "error",
+  });
+  if (!response.ok) {
+    throw new Error(`agent card request failed with HTTP ${response.status}`);
+  }
+  const document = requireRecord(await response.json(), "agent card");
+  if (document.uaid !== expectedUaid) {
+    throw new Error("agent card UAID does not match the expected UAID");
+  }
+  if (!Array.isArray(document.service)) {
+    throw new Error("agent card must contain service entries");
+  }
+  const reviews = document.service
+    .map((entry: unknown) => requireRecord(entry, "service entry"))
+    .filter((entry) => entry.id === "review");
+  if (reviews.length !== 1 || reviews[0].type !== "HTTP" || reviews[0].method !== "POST") {
+    throw new Error("agent card must contain exactly one HTTP POST review service");
+  }
+  const endpoint = guardHttpUrl(requireString(reviews[0].serviceEndpoint, "review serviceEndpoint"));
+  if (endpoint.origin !== originUrl.origin) {
+    throw new Error("review endpoint must have the configured guard origin");
+  }
+  if (document.url !== endpoint.href) {
+    throw new Error("agent card URL must match the review service endpoint");
+  }
+  return {
+    id: expectedUaid,
+    resolved: true,
+    document,
+    service: [{ id: "review", type: "HTTP", method: "POST", serviceEndpoint: endpoint.href }],
+    verification: {
+      uaidMatched: true,
+      endpointSameOrigin: true,
+      assurance: "Expected UAID matched at the configured origin; no cryptographic ownership proof.",
+    },
+  };
+}
+
+export async function resolveHostedReviewEndpoint(env: NodeJS.ProcessEnv = process.env): Promise<string> {
+  const override = env.COUNTERSIGN_REVIEW_URL_OVERRIDE?.trim();
+  if (override) {
+    const url = guardHttpUrl(override);
+    if (!["127.0.0.1", "localhost", "[::1]"].includes(url.hostname)) {
+      throw new Error("review URL override is restricted to loopback for local runs");
+    }
+    return url.href;
+  }
+  const resolution = await resolveGuard(
+    requireEnvironmentVariable("COUNTERSIGN_GUARD_UAID", env),
+    requireEnvironmentVariable("COUNTERSIGN_GUARD_ORIGIN", env),
+  );
+  return resolution.service[0].serviceEndpoint;
 }
 
 function parseReviewResponse(value: unknown): ReviewResponse {
@@ -261,7 +336,7 @@ async function main(): Promise<void> {
   const outcome: Outcome = requested;
 
   const tenantId = requireEnvironmentVariable("COUNTERSIGN_TENANT_ID");
-  const guardUrl = requireEnvironmentVariable("COUNTERSIGN_GUARD_URL");
+  const guardUrl = await resolveHostedReviewEndpoint();
   const ownerPrivateKey = PrivateKey.fromStringDer(
     requireEnvironmentVariable("COUNTERSIGN_OWNER_PRIVATE_KEY"),
   );
@@ -382,6 +457,7 @@ async function main(): Promise<void> {
     console.log("\n[4/5] Pay the remote guard over x402");
     const challengeResponse = await fetch(guardUrl, {
       method: "POST",
+      redirect: "error",
       headers: {
         accept: "application/json",
         "content-type": "application/json",
@@ -433,6 +509,7 @@ async function main(): Promise<void> {
       await httpPayer.createPaymentPayload(paymentRequired);
     const paidResponse = await fetch(guardUrl, {
       method: "POST",
+      redirect: "error",
       headers: {
         accept: "application/json",
         "content-type": "application/json",
@@ -556,4 +633,6 @@ async function main(): Promise<void> {
   }
 }
 
-await main();
+if (import.meta.main) {
+  await main();
+}

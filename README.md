@@ -73,11 +73,16 @@ separate from the treasury, expected agent, guard operator, and their authorizat
 keys. The narrated flow also pays from a separately keyed account, so none of the
 treasury authorization keys enters its decoded x402 payload.
 
-**One guard process authorizes exactly one treasury.** The owner, agent and guard keys, the
-treasury account and the expected agent account are all fixed in its configuration and
-re-checked against consensus at startup. It is not a multi-tenant service: the deployed
-guard at `countersign.gudman.xyz` reviews the treasury above and nothing else. A second
-treasury needs a second guard.
+**One guard process can authorize multiple configured tenants.** Each tenant has its own
+owner and agent public keys, treasury account and expected agent account. The guard
+re-checks every tenant's authorization tree against consensus at startup and refuses to
+start if any tenant fails validation. Requests select an enrolled tenant, whose policy
+signature and nonce state are checked independently. Enrollment is operator-configured;
+there is no public self-enrollment endpoint.
+
+The deployed instance at `countersign.gudman.xyz` serves **one tenant**, the treasury
+documented above. Multi-tenant support and agent-card resolution on this branch have
+not been deployed; this change does not add tenants to the live instance.
 
 The deployed host holds exactly one private key, the guard's own. The owner and agent keys
 that together authorize the treasury never leave the caller, which is why the guard cannot
@@ -102,7 +107,7 @@ The guard requires all of the following:
 `createProductionReviewServer` composes the offline-tested HTTP handler with the live
 Hedera adapters. A request is parsed with an exact schema, the owner mandate signature
 is verified, and x402 settlement completes before the service performs consensus work.
-At startup, the service resolves the treasury and agent accounts, verifies the exact
+At startup, the service resolves each tenant's treasury and agent accounts, verifies the exact
 `1-of[owner, 2-of[agent, guard]]` tree, and requires the three authorization keys to be
 distinct. For each review it selects one consensus node, reads that node's versions,
 resolves `ScheduleInfo` from the same node, and reads the same node's versions again.
@@ -196,6 +201,33 @@ identity separation, HCS-14 known answers, and HCS verdict records.
 `npm run hosted-review` is a caller that pays the deployed guard over the public internet.
 It holds the owner, agent and payer keys and never holds the guard key, so the service it
 pays is genuinely a separate process on a separate machine.
+
+On this branch, the caller resolves the guard's endpoint from its HCS-14 identifier via
+a published agent card; it never holds a hardcoded review URL in its default mode.
+`GET /.well-known/agent.json` is unpaid and publishes the UAID, guard public key,
+HTTP POST review endpoint, x402 payment terms (`hedera:testnet`, price in tinybars),
+and tenant count. It enumerates no tenants or treasuries. The endpoint origin and price
+come from the payment gate's configuration.
+
+The caller takes `COUNTERSIGN_GUARD_UAID` and `COUNTERSIGN_GUARD_ORIGIN`, fetches the
+card, and refuses unless its UAID exactly matches the expected identifier. It also
+requires the review endpoint to share the configured origin and rejects redirects.
+This implements origin-based card resolution using the
+[HCS-14 agent-card convention](https://hol.org/docs/standards/hcs-14/), not directory
+listing. The guard is not in any directory. The identifier match is not cryptographic
+proof that the host controls the guard key.
+
+For the recorded guard, configure the caller with:
+
+```bash
+export COUNTERSIGN_GUARD_ORIGIN=https://countersign.gudman.xyz
+export COUNTERSIGN_GUARD_UAID='uaid:aid:9Us31TEAEQZrKAuN9XKiaVCEHE59my6uoPfUH8aAXFVQUVz4AAxxKf4bjv8mreGAHz;uid=0;registry=countersign;proto=hcs-10;nativeId=hedera:testnet:0.0.10502369'
+```
+
+These commands require the agent-card route to be deployed before a paid hosted run.
+Existing `COUNTERSIGN_GUARD_URL` values are ignored. Local runs may explicitly set
+`COUNTERSIGN_REVIEW_URL_OVERRIDE=http://127.0.0.1:4020/review` to bypass resolution;
+this escape hatch accepts loopback hosts only and does not demonstrate resolution.
 
 ```bash
 npm run hosted-review            # in-policy transfer, expect an approval

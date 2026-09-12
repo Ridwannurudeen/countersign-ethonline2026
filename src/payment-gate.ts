@@ -39,7 +39,7 @@ export interface PaymentGateConfig {
   readonly resourceUrl: string;
   readonly priceTinybars: string;
   readonly operationalAccount: OperationalPaymentAccount;
-  readonly treasuryAuthorization: TreasuryAuthorization;
+  readonly treasuryAuthorizations: readonly TreasuryAuthorization[];
 }
 
 export type PaymentGateOutcome =
@@ -70,39 +70,44 @@ function validateConfig(config: PaymentGateConfig): void {
     config.operationalAccount.accountId,
     "operational payment accountId",
   );
-  requireNumericAccountId(
-    config.treasuryAuthorization.accountId,
-    "treasury accountId",
-  );
-
-  if (
-    config.operationalAccount.accountId === config.treasuryAuthorization.accountId
-  ) {
-    throw new Error(
-      "operational payment account must differ from the treasury account",
+  if (config.treasuryAuthorizations.length === 0) {
+    throw new Error("at least one treasury authorization is required");
+  }
+  for (const authorization of config.treasuryAuthorizations) {
+    requireNumericAccountId(
+      authorization.accountId,
+      "treasury accountId",
     );
-  }
 
-  if (!(config.operationalAccount.publicKey instanceof PublicKey)) {
-    throw new Error("operational payment key must be a single public key");
-  }
+    if (
+      config.operationalAccount.accountId === authorization.accountId
+    ) {
+      throw new Error(
+        "operational payment account must differ from the treasury account",
+      );
+    }
 
-  const authorizationKeys = [
-    config.treasuryAuthorization.ownerPublicKey,
-    config.treasuryAuthorization.agentPublicKey,
-    config.treasuryAuthorization.guardPublicKey,
-  ];
-  if (authorizationKeys.some((key) => !(key instanceof PublicKey))) {
-    throw new Error("treasury authorization keys must be single public keys");
-  }
-  if (
-    authorizationKeys.some((key) =>
-      config.operationalAccount.publicKey.equals(key),
-    )
-  ) {
-    throw new Error(
-      "operational payment key must be separate from treasury authorization keys",
-    );
+    if (!(config.operationalAccount.publicKey instanceof PublicKey)) {
+      throw new Error("operational payment key must be a single public key");
+    }
+
+    const authorizationKeys = [
+      authorization.ownerPublicKey,
+      authorization.agentPublicKey,
+      authorization.guardPublicKey,
+    ];
+    if (authorizationKeys.some((key) => !(key instanceof PublicKey))) {
+      throw new Error("treasury authorization keys must be single public keys");
+    }
+    if (
+      authorizationKeys.some((key) =>
+        config.operationalAccount.publicKey.equals(key),
+      )
+    ) {
+      throw new Error(
+        "operational payment key must be separate from treasury authorization keys",
+      );
+    }
   }
 
   if (!minimalUnsignedDecimalPattern.test(config.priceTinybars)) {
@@ -233,9 +238,8 @@ export async function createPaymentGate(
     ): Promise<PaymentGateOutcome> {
       const acceptedPaymentHeader =
         paymentSignatureHeader !== undefined &&
-        usesTreasuryAuthorizationIdentity(
-          paymentSignatureHeader,
-          config.treasuryAuthorization,
+        config.treasuryAuthorizations.some((authorization) =>
+          usesTreasuryAuthorizationIdentity(paymentSignatureHeader, authorization),
         )
           ? undefined
           : paymentSignatureHeader;

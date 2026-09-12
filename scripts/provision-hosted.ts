@@ -13,6 +13,7 @@ import {
 } from "@hiero-ledger/sdk";
 
 import { accountMirrorNodeUrl } from "../src/evidence-links.ts";
+import { generateHcs14Aid } from "../src/hcs14.ts";
 
 // Provisions the persistent authorization topology that the hosted guard
 // reviews against. The narrated flows create and then destroy their accounts on
@@ -37,7 +38,7 @@ const FEE_DESTINATION_INITIAL_BALANCE_TINYBARS = "100000000";
 function requireEnvironmentVariable(name: string): string {
   const value = process.env[name];
   if (value === undefined || value.trim() === "") {
-    throw new Error(`${name} must be set`);
+    throw new Error(`missing required environment variable: ${name}`);
   }
 
   return value.trim();
@@ -172,14 +173,17 @@ async function main(): Promise<void> {
     writeFileSync(
       guardEnvPath,
       renderEnvFile({
-        COUNTERSIGN_TENANT_ID: tenantId,
+        COUNTERSIGN_TENANTS_JSON: JSON.stringify({
+          [tenantId]: {
+            ownerPublicKey: ownerPrivateKey.publicKey.toStringDer(),
+            agentPublicKey: agentPrivateKey.publicKey.toStringDer(),
+            expectedAgentAccountId: agentAccountId.toString(),
+            treasuryAccountId: treasuryAccountId.toString(),
+          },
+        }),
         COUNTERSIGN_PUBLIC_ORIGIN: publicOrigin,
         COUNTERSIGN_GUARD_ACCOUNT_ID: guardAccountId.toString(),
         COUNTERSIGN_GUARD_PRIVATE_KEY: guardPrivateKey.toStringDer(),
-        COUNTERSIGN_OWNER_PUBLIC_KEY: ownerPrivateKey.publicKey.toStringDer(),
-        COUNTERSIGN_AGENT_PUBLIC_KEY: agentPrivateKey.publicKey.toStringDer(),
-        COUNTERSIGN_TREASURY_ACCOUNT_ID: treasuryAccountId.toString(),
-        COUNTERSIGN_AGENT_ACCOUNT_ID: agentAccountId.toString(),
         COUNTERSIGN_FEE_ACCOUNT_ID: feeDestinationAccountId.toString(),
         COUNTERSIGN_FEE_PUBLIC_KEY:
           feeDestinationPrivateKey.publicKey.toStringDer(),
@@ -194,7 +198,15 @@ async function main(): Promise<void> {
       callerEnvPath,
       renderEnvFile({
         COUNTERSIGN_TENANT_ID: tenantId,
-        COUNTERSIGN_GUARD_URL: `${publicOrigin}/review`,
+        COUNTERSIGN_GUARD_ORIGIN: publicOrigin,
+        COUNTERSIGN_GUARD_UAID: generateHcs14Aid({
+          registry: "countersign",
+          name: "Countersign Guard",
+          version: "0.1.0",
+          protocol: "hcs-10",
+          nativeId: `hedera:testnet:${guardAccountId.toString()}`,
+          skills: [],
+        }),
         COUNTERSIGN_OWNER_PRIVATE_KEY: ownerPrivateKey.toStringDer(),
         COUNTERSIGN_AGENT_PRIVATE_KEY: agentPrivateKey.toStringDer(),
         COUNTERSIGN_PAYER_PRIVATE_KEY: payerPrivateKey.toStringDer(),
