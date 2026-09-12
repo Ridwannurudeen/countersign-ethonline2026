@@ -23,11 +23,16 @@ before this runbook was written:
 | Command | Wall clock | What it proves |
 | --- | --- | --- |
 | `npm run spike` | 27s | The network itself refuses the agent acting alone |
-| `npm run hosted-review` | ~45s | A paid review of an in-policy transfer, by the **live public guard** |
-| `npm run hosted-review refused` | ~40s | A paid refusal of an out-of-policy transfer, by the same guard |
+| `npm run hosted-review` | 19s | A paid review of an in-policy transfer, by the **live public guard** |
+| `npm run hosted-review refused` | 24s | A paid refusal of an out-of-policy transfer, by the same guard |
 
-That is about 110 seconds of screen time. With narration over the top and a short opening
-and close, the natural finished length is about three minutes.
+All three were timed against the live guard immediately before this was written.
+
+That is **70 seconds** of screen time, which makes the **two-minute floor the real
+constraint, not the four-minute ceiling**. Do not rush the narration to fit — there is room
+to spare. Let each run finish on screen, pause on the lines that matter, and talk through
+what just happened before moving on. If a finished cut lands under 2:00 it is rejected, so
+check the length before uploading.
 
 **Record against the deployed guard, not the local one.** `npm run demo` and
 `npm run refusal` still work and still prove the protocol, but they start a guard inside
@@ -39,14 +44,38 @@ the public internet to `https://countersign.gudman.xyz`, which is the thing wort
 1. `npm test` — expect 360 passing, 0 failing.
 2. Terminal at a large font, full screen, dark background. The output is wide; make sure
    `PASS:` lines do not wrap.
-3. Have `.env` already configured. The scripts fail by name on a missing value, which is
-   good behaviour but a bad take.
-4. Close anything that could raise a notification.
-5. Have one browser tab open on
+3. Check your configuration **before** recording, not mid-take. The scripts fail by name on
+   a missing value, which is good behaviour and a ruined take. `npm run spike` reads
+   `.env`; `npm run hosted-review` reads `var/hosted-caller.env`, which provisioning wrote
+   on 2026-09-12. Both must exist. If `var/hosted-caller.env` is missing, **stop and ask** —
+   do not re-run `npm run provision-hosted`, because that would create a new treasury and
+   invalidate every evidence link in the README.
+4. Confirm the guard is up: `curl https://countersign.gudman.xyz/guard` should return JSON
+   with a `guardPublicKey`. If it does not, see the fallback below before you start.
+5. Close anything that could raise a notification.
+6. Have one browser tab open on
    `https://testnet.mirrornode.hedera.com/api/v1/schedules/` so you can paste a ScheduleID
    straight into it for the evidence beat.
-6. Each run creates fresh accounts, so **the IDs on screen will not match this document**.
-   That is expected. Read whatever your run prints.
+7. The treasury, agent and guard accounts are fixed and will match the README. Each run
+   creates a **new ScheduleID**, so that one number will differ from anything written down.
+   That is expected — read whatever your run prints. (`npm run spike` is the exception: it
+   creates its own throwaway accounts, so every ID in that scene is new.)
+
+## If the live guard or the facilitator is unavailable
+
+Scene 3 and Scene 4 depend on two things outside this machine: the deployed guard at
+`countersign.gudman.xyz` and the Blocky402 facilitator. If either is down, `hosted-review`
+fails at the payment step.
+
+Do not lose the night to it. `npm run demo` and `npm run refusal` run the identical
+protocol against a guard started inside the script on loopback, and they still show the
+402, a real Blocky402 settlement, the consensus checks and the outcome. Fall back to them,
+and in that take say "the guard" rather than naming the URL — then the narration stays true
+regardless of which guard answered. The spike scene is unaffected either way.
+
+If the facilitator itself is down, both paths fail at the same step. In that case record
+Scenes 1, 2 and 5 — the enforcement proof and the mirror-node verification are the
+strongest material anyway — and add the paid scenes when it recovers.
 
 ## Shot list
 
