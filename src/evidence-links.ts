@@ -61,7 +61,7 @@ function containsPublicKeyPrefix(
 
   const normalizedPublicKey = publicKeyHex.toLowerCase();
   return publicKeyPrefixes.some((prefix) =>
-    normalizedPublicKey.startsWith(prefix.toLowerCase()),
+    normalizedPublicKey === prefix.toLowerCase(),
   );
 }
 

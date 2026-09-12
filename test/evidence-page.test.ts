@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
+import { assertExecutedScheduleEvidence, parseScheduleEvidence } from "../src/evidence-links.ts";
+
 import {
   executePage,
   manifestWithRecords,
@@ -277,3 +279,52 @@ test("INVARIANT: evidence records must interpret signatures with their own guard
     assert.doesNotMatch(item.textContent, /Refusal verified|Absent from/);
   }
 });
+
+test("INVARIANT: an approval record cannot acquire a refusal banner from live absence", async () => {
+  const page = await executePage(
+    "evidence",
+    manifestWithRecords([{ ...reviewRecord, outcome: "approved" }]),
+    async () => Response.json(mirrorSchedule),
+  );
+  await page.done;
+  assert.match(page.element("#operator-list").textContent, /Absent from signatures/);
+  assert.doesNotMatch(page.element("#operator-list").textContent, /Refusal verified/);
+});
+
+for (const pageName of ["evidence", "replay"] as const) {
+  for (const truncated of [false, true]) {
+    test(`INVARIANT: ${pageName} and the evidence helper agree on ${truncated ? "truncated" : "full"} live guard keys`, async () => {
+      const live = JSON.parse(await readFile(
+        new URL("./fixtures/live-mirror-schedules.json", import.meta.url), "utf8",
+      )) as {
+        executed: { response: typeof mirrorSchedule };
+        agentAccountId: string;
+        agentPublicKeyHex: string;
+        guardPublicKeyHex: string;
+      };
+      const record = { ...reviewRecord, outcome: "approved" as const, guardPublicKeyPrefix: live.guardPublicKeyHex };
+      const schedule = {
+        ...live.executed.response,
+        memo: record.mandateDigest,
+        signatures: [
+          { public_key_prefix: mirrorPrefix(live.agentPublicKeyHex) },
+          { public_key_prefix: mirrorPrefix(truncated ? live.guardPublicKeyHex.slice(0, 2) : live.guardPublicKeyHex) },
+        ],
+      };
+      const verify = () => assertExecutedScheduleEvidence(parseScheduleEvidence(schedule), {
+        expectedAgentAccountId: live.agentAccountId,
+        agentPublicKeyHex: live.agentPublicKeyHex,
+        guardPublicKeyHex: live.guardPublicKeyHex,
+      });
+      if (truncated) assert.throws(verify, /guard key prefix must be present/);
+      else assert.doesNotThrow(verify);
+      const page = await executePage(pageName, manifestWithRecords([record]), async () => Response.json(schedule));
+      await page.done;
+      const text = pageName === "evidence"
+        ? page.element("#operator-list").textContent
+        : page.element("#chain").children[4]!.textContent;
+      assert.match(text, truncated ? /Absent from signatures|Verification mismatch.*guard prefix absent/ : /Present in signatures|Verified live.*guard prefix present/);
+      assert.doesNotMatch(text, /Refusal verified/);
+    });
+  }
+}

@@ -20,6 +20,8 @@ import type {
   ReviewableScheduleInfo,
 } from "../src/review-schedule.ts";
 import {
+  completeMandateReview,
+  getCompletedMandateReview,
   initializeReplayStore,
   getMandateReviewState,
   ReplayStoreContentionError,
@@ -195,6 +197,9 @@ function harness(
     lookupCompletedReview() {
       events.push("lookup");
       return null;
+    },
+    lookupReviewState() {
+      return { status: "absent" };
     },
     reserveNonce() {
       events.push("reserve");
@@ -536,7 +541,7 @@ test("POST /review records a replay refusal without submitting approval", async 
   assert.equal(state.verdicts[0]?.outcome, "refused");
 });
 
-test("POST /review refuses a pending retry without submitting approval", async () => {
+test("POST /review keeps a pending retry retryable without publishing a refusal", async () => {
   const state = harness({
     reserveNonce() {
       state.events.push("reserve");
@@ -546,24 +551,17 @@ test("POST /review refuses a pending retry without submitting approval", async (
 
   const { response, json } = await postReview(state.dependencies, requestBody());
 
-  assert.equal(response.status, 200);
-  assert.deepEqual(json, {
-    outcome: "refused",
-    reason: "mandate review is already pending",
-    scheduleId: "0.0.7001",
-    mandateDigest: digest,
-    settlementId: "0.0.8001@1788509000.000000001",
-    mirrorNodeUrl:
-      "https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.9001/messages/4",
-  });
+  assert.equal(response.status, 503);
+  assert.equal(response.headers.get("retry-after"), "1");
+  assert.deepEqual(json, { error: "mandate review is already pending" });
   assert.deepEqual(state.events, [
     "payment",
     "lookup",
     "resolve",
     "reserve",
-    "record",
+    "resolve",
   ]);
-  assert.equal(state.verdicts[0]?.outcome, "refused");
+  assert.deepEqual(state.verdicts, []);
 });
 
 test("POST /review returns a retryable response for replay-store contention", async () => {
@@ -1461,6 +1459,9 @@ async function countersignHarness(t: TestContext) {
     state.events.push("reserve");
     return reserveMandateReview(databasePath, value);
   };
+  state.dependencies.lookupCompletedReview = (value) => getCompletedMandateReview(databasePath, value);
+  state.dependencies.lookupReviewState = (value) => getMandateReviewState(databasePath, value);
+  state.dependencies.completeNonce = (value, completion) => completeMandateReview(databasePath, value, completion);
   const originalSign = guardPrivateKey.sign.bind(guardPrivateKey);
   t.mock.method(guardPrivateKey, "sign", (bytes: Uint8Array) => {
     state.events.push("guard-sign");
@@ -1626,9 +1627,12 @@ test("POST /countersign concurrent paid requests produce only one guard signatur
     postReview(state.dependencies, state.body, state.headers, "/countersign"),
     postReview(state.dependencies, state.body, state.headers, "/countersign"),
   ]);
-  assert.deepEqual(results.map(({ json }) => json.outcome).sort(), ["approved", "refused"]);
+  assert.ok(results.some(({ json }) => json.outcome === "approved"));
+  for (const { response, json } of results) {
+    assert.ok(json.outcome === "approved" || (response.status === 503 && json.outcome === undefined));
+  }
   assert.equal(state.events.filter((event) => event === "guard-sign").length, 1);
-  assert.equal(state.messages.length, 2);
+  assert.equal(state.messages.length, 1);
   assert.equal(state.events.filter((event) => event === "settle-payment").length, 2);
 });
 
@@ -1669,4 +1673,141 @@ test("POST /countersign logs a paid refusal even when the decoded transaction ID
   assert.equal(state.messages[0].transactionId, json.transactionId);
   assert.equal(state.messages[0].invariant, json.invariant);
   assert.equal(state.events.includes("guard-sign"), false);
+});
+
+test("INVARIANT: countersign retries replay the persisted signature even after validity expires", async (t) => {
+  const state = await countersignHarness(t);
+  const first = await postReview(state.dependencies, state.body, state.headers, "/countersign");
+  assert.equal(first.json.outcome, "approved");
+  const retry = await postReview(state.dependencies, state.body, state.headers, "/countersign");
+  assert.equal(retry.response.status, 200);
+  assert.deepEqual(retry.json, first.json);
+  state.dependencies.countersign.nowEpochSeconds = () => mandate.expiresAtEpochSeconds;
+  const expired = await postReview(state.dependencies, state.body, state.headers, "/countersign");
+  assert.deepEqual(expired.json, first.json);
+  assert.equal(getMandateReviewState(state.databasePath, state.reservation).status, "completed");
+  assert.equal(state.events.filter((event) => event === "guard-sign").length, 1);
+  assert.deepEqual(state.messages.map((message) => message.outcome), ["approved"]);
+});
+
+test("INVARIANT: a completed countersign tuple still requires the owner's mandate signature", async (t) => {
+  const state = await countersignHarness(t);
+  await postReview(state.dependencies, state.body, state.headers, "/countersign");
+  const body = {
+    ...state.body,
+    mandateEnvelope: { ...state.body.mandateEnvelope, signature: Buffer.alloc(64).toString("base64url") },
+  };
+  const retry = await postReview(state.dependencies, body, state.headers, "/countersign");
+  assert.equal(retry.response.status, 401);
+  assert.equal(retry.json.transactionBase64, undefined);
+  assert.deepEqual(state.messages.map((message) => message.outcome), ["approved"]);
+});
+
+test("INVARIANT: an in-flight countersign retry publishes nothing while approval recording is pending", async (t) => {
+  const state = await countersignHarness(t);
+  const started = Promise.withResolvers<void>();
+  const finish = Promise.withResolvers<void>();
+  const record = state.dependencies.verdictLog.record.bind(state.dependencies.verdictLog);
+  state.dependencies.verdictLog.record = async (value) => {
+    if (value.outcome === "approved") {
+      started.resolve();
+      await finish.promise;
+    }
+    return record(value);
+  };
+  const first = postReview(state.dependencies, state.body, state.headers, "/countersign");
+  await started.promise;
+  try {
+    const retry = await postReview(state.dependencies, state.body, state.headers, "/countersign");
+    assert.equal(retry.response.status, 503);
+    assert.equal(retry.response.headers.get("retry-after"), "1");
+    assert.equal(retry.json.outcome, undefined);
+    assert.equal(state.messages.length, 0);
+  } finally {
+    finish.resolve();
+    await first;
+  }
+  assert.deepEqual(state.messages.map((message) => message.outcome), ["approved"]);
+});
+
+test("INVARIANT: countersign still refuses a different transaction under a completed nonce", async (t) => {
+  const state = await countersignHarness(t);
+  await postReview(state.dependencies, state.body, state.headers, "/countersign");
+  const transaction = await new TransferTransaction()
+    .setTransactionId(TransactionId.fromString("0.0.4001@1788509001.000000000"))
+    .setNodeAccountIds([AccountId.fromString("0.0.3")])
+    .setMaxTransactionFee(Hbar.fromTinybars("100000000"))
+    .addHbarTransfer("0.0.1001", Hbar.fromTinybars(-100))
+    .addHbarTransfer("0.0.1002", Hbar.fromTinybars(100))
+    .freeze().sign(agentPrivateKey);
+  const body = { ...state.body, transactionBase64: Buffer.from(transaction.toBytes()).toString("base64") };
+  const retry = await postReview(state.dependencies, body, state.headers, "/countersign");
+  assert.equal(retry.json.outcome, "refused");
+  assert.notEqual(retry.json.transactionDigest, state.reservation.transactionDigest);
+  assert.equal(state.events.filter((event) => event === "guard-sign").length, 1);
+  assert.deepEqual(state.messages.map((message) => message.outcome), ["approved", "refused"]);
+});
+
+for (const failure of ["HCS", "completion"] as const) {
+  test(`INVARIANT: countersign ${failure} failure cannot turn a signed tuple into refusal evidence`, async (t) => {
+    const state = await countersignHarness(t);
+    if (failure === "HCS") {
+      t.mock.method(state.dependencies.verdictLog, "record", async () => { throw new Error("HCS unavailable"); });
+    } else {
+      t.mock.method(state.dependencies, "completeNonce", () => { throw new Error("storage unavailable"); });
+    }
+    const first = await postReview(state.dependencies, state.body, state.headers, "/countersign");
+    assert.equal(first.response.status, 500);
+    t.mock.restoreAll();
+    state.dependencies.countersign.nowEpochSeconds = () => mandate.expiresAtEpochSeconds;
+    const retry = await postReview(state.dependencies, state.body, state.headers, "/countersign");
+    assert.equal(retry.response.status, 503);
+    assert.equal(retry.response.headers.get("retry-after"), "1");
+    assert.equal(retry.json.outcome, undefined);
+    assert.equal(state.messages.some((message) => message.outcome === "refused"), false);
+  });
+}
+
+for (const failure of ["receipt", "HCS", "completion"] as const) {
+  test(`INVARIANT: review ${failure} failure after consensus signing cannot publish a refusal on retry`, async (t) => {
+    const state = await countersignHarness(t);
+    let signed = false;
+    state.dependencies.resolveSchedule = async () => resolvedSchedule(schedule(signed ? {
+      signers: new KeyList([agentKey, guardKey]),
+      executed: { seconds: 1788509001n, nanos: 0n },
+    } : {}));
+    state.dependencies.submitScheduleApproval = async () => {
+      signed = true;
+      if (failure === "receipt") throw new Error("receipt unavailable");
+    };
+    if (failure === "HCS") {
+      t.mock.method(state.dependencies.verdictLog, "record", async () => { throw new Error("HCS unavailable"); });
+    } else if (failure === "completion") {
+      t.mock.method(state.dependencies, "completeNonce", () => { throw new Error("storage unavailable"); });
+    }
+    const first = await postReview(state.dependencies, requestBody(), state.headers);
+    assert.equal(first.response.status, 500);
+    assert.equal(signed, true);
+    t.mock.restoreAll();
+    const retry = await postReview(state.dependencies, requestBody(), state.headers);
+    assert.equal(retry.response.status, 503);
+    assert.equal(retry.response.headers.get("retry-after"), "1");
+    assert.equal(retry.json.outcome, undefined);
+    assert.equal(state.messages.some((message) => message.outcome === "refused"), false);
+  });
+}
+
+test("INVARIANT: review re-resolves consensus when a pending reservation races with signing", async () => {
+  const state = harness();
+  let resolutions = 0;
+  state.dependencies.resolveSchedule = async () => {
+    resolutions += 1;
+    return resolvedSchedule(schedule(resolutions === 1 ? {} : { signers: new KeyList([agentKey, guardKey]) }));
+  };
+  state.dependencies.reserveNonce = () => ({ status: "retry", outcome: null });
+  const retry = await postReview(state.dependencies, requestBody());
+  assert.equal(retry.response.status, 503);
+  assert.equal(retry.response.headers.get("retry-after"), "1");
+  assert.equal(resolutions, 2);
+  assert.deepEqual(state.verdicts, []);
 });

@@ -382,6 +382,7 @@
             "guardPublicKeyPrefix",
           ),
           mandateDigest: record.mandateDigest,
+          outcome: record.outcome,
           origin: record.origin,
           scheduleId: record.scheduleId,
           mirrorNodeUrl: requireMirrorUrl(record.mirrorNodeUrl, record.scheduleId),
@@ -494,7 +495,7 @@
           addFact(facts, "Deleted", schedule.deleted ? "Yes" : "No");
           article.append(facts);
 
-          if (!schedule.deleted && !executed && !guardSigned) {
+          if (record.outcome === "refused" && !schedule.deleted && !executed && !guardSigned) {
             const finding = document.createElement("p");
             finding.className = "finding";
             finding.textContent =

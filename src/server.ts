@@ -35,12 +35,14 @@ import {
 import {
   completeMandateReview,
   getCompletedMandateReview,
+  getMandateReviewState,
   initializeReplayStore,
   ReplayStoreContentionError,
   reserveMandateReview,
   type CompletedMandateReview,
   type MandateReviewReservation,
   type MandateReviewReservationResult,
+  type MandateReviewState,
 } from "./replay-store.ts";
 import {
   reviewSchedule,
@@ -115,6 +117,7 @@ export interface ReviewServerDependencies {
   lookupCompletedReview(
     reservation: MandateReviewReservation,
   ): Awaitable<CompletedMandateReview | null>;
+  lookupReviewState(reservation: MandateReviewReservation): Awaitable<MandateReviewState>;
   resolveSchedule(scheduleId: string): Promise<ResolvedSchedule>;
   reserveNonce(
     reservation: MandateReviewReservation,
@@ -489,6 +492,12 @@ async function handleReviewRequest(
   }
 
   const resolved = await dependencies.resolveSchedule(parsedRequest.scheduleId);
+  if (resolved.info.signers?.toArray().some(
+    (key) => key instanceof PublicKey && key.equals(dependencies.guardPublicKey),
+  )) {
+    writeJson(response, 503, { error: "mandate approval completion is pending" }, { "retry-after": "1" });
+    return;
+  }
   if (resolved.refusalReason !== undefined) {
     await recordAndRespond(
       response,
@@ -545,15 +554,13 @@ async function handleReviewRequest(
 
   if (reservationResult.status === "retry") {
     if (reservationResult.outcome === null) {
-      await recordAndRespond(
-        response,
-        dependencies,
-        parsedRequest,
-        digest,
-        payment.settlementId,
-        { outcome: "refused", reason: "mandate review is already pending" },
-        payment.responseHeaders,
+      const pending = await dependencies.resolveSchedule(parsedRequest.scheduleId);
+      const guardSigned = pending.info.signers?.toArray().some(
+        (key) => key instanceof PublicKey && key.equals(dependencies.guardPublicKey),
       );
+      writeJson(response, 503, {
+        error: guardSigned ? "mandate approval completion is pending" : "mandate review is already pending",
+      }, { "retry-after": "1" });
       return;
     }
     if (reservationResult.outcome !== "approved") {
@@ -653,6 +660,29 @@ async function handleCountersignRequest(
   const digest = mandateDigest(envelope.mandate);
   const transactionDigest = createHash("sha256").update(Buffer.from(transactionBase64, "base64")).digest("hex");
   const transactionId = reviewedTransactionId(transactionBase64);
+  const reservation: MandateReviewReservation = {
+    tenantId, nonce: envelope.mandate.nonce, mandateDigest: digest, transactionDigest,
+  };
+  const reviewState = await dependencies.lookupReviewState(reservation);
+  if (reviewState.status !== "absent") {
+    if (!verifyMandateSignature(envelope, tenant.ownerPublicKey)) {
+      throw new RequestError(401, "mandate signature is invalid");
+    }
+    if (reviewState.status === "pending") {
+      writeJson(response, 503, { error: "mandate review is already pending" }, { "retry-after": "1" });
+      return;
+    }
+    const completion = reviewState.completion;
+    if (completion.transactionBase64 === undefined) {
+      throw new Error("stored countersign outcome is incomplete");
+    }
+    writeJson(response, 200, {
+      outcome: completion.outcome, transactionBase64: completion.transactionBase64,
+      transactionId, transactionDigest, mandateDigest: digest,
+      settlementId: completion.settlementId, mirrorNodeUrl: completion.mirrorNodeUrl,
+    }, payment.responseHeaders);
+    return;
+  }
   const outcome = await validateCountersignTransfer(transactionBase64, envelope, {
     ...tenant,
     guardPublicKey: dependencies.guardPublicKey,
@@ -664,13 +694,27 @@ async function handleCountersignRequest(
   if (!outcome.approved) {
     result = { outcome: "refused", invariant: outcome.invariant };
   } else {
-    const reservation = await dependencies.reserveNonce({
-      tenantId, nonce: envelope.mandate.nonce, mandateDigest: digest, transactionDigest,
-    });
-    if (reservation.status !== "reserved") {
+    const reservationResult = await dependencies.reserveNonce(reservation);
+    if (reservationResult.status === "retry") {
+      const completion = await dependencies.lookupCompletedReview(reservation);
+      if (completion === null) {
+        writeJson(response, 503, { error: "mandate review is already pending" }, { "retry-after": "1" });
+        return;
+      }
+      if (completion.transactionBase64 === undefined) {
+        throw new Error("stored countersign outcome is incomplete");
+      }
+      writeJson(response, 200, {
+        outcome: completion.outcome, transactionBase64: completion.transactionBase64,
+        transactionId, transactionDigest, mandateDigest: digest,
+        settlementId: completion.settlementId, mirrorNodeUrl: completion.mirrorNodeUrl,
+      }, payment.responseHeaders);
+      return;
+    }
+    if (reservationResult.status === "refused") {
       result = {
         outcome: "refused",
-        invariant: reservation.status === "refused" ? reservation.reason : "mandate nonce has already been reserved",
+        invariant: reservationResult.reason,
       };
     } else {
       result = { outcome: "approved", transactionBase64: await dependencies.countersign.sign(outcome) };
@@ -689,6 +733,16 @@ async function handleCountersignRequest(
   });
   if (receipt.mirrorNodeUrl.length === 0) {
     throw new Error("verdict mirror-node URL is missing");
+  }
+  if (outcome.approved && result.outcome === "approved") {
+    await dependencies.completeNonce(reservation, {
+      outcome: "approved",
+      transactionBase64: result.transactionBase64,
+      recipientAccountId: outcome.recipientAccountId,
+      amountTinybars: outcome.amountTinybars,
+      settlementId: payment.settlementId,
+      mirrorNodeUrl: receipt.mirrorNodeUrl,
+    });
   }
   writeJson(response, 200, {
     ...result, transactionId, transactionDigest, mandateDigest: digest,
@@ -999,6 +1053,9 @@ export async function createProductionReviewServer(
         config.replayDatabasePath,
         reservation,
       );
+    },
+    lookupReviewState(reservation) {
+      return getMandateReviewState(config.replayDatabasePath, reservation);
     },
     async resolveSchedule(scheduleId) {
       const versionBefore = await services.executeNetworkVersionInfoQuery(

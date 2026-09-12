@@ -18,8 +18,8 @@ function mirrorPrefix(publicKeyHex: string): string {
   return Buffer.from(publicKeyHex, "hex").toString("base64");
 }
 
-const agentMirrorPrefix = mirrorPrefix("a".repeat(16));
-const guardMirrorPrefix = mirrorPrefix("b".repeat(16));
+const agentMirrorPrefix = mirrorPrefix(agentPublicKeyHex);
+const guardMirrorPrefix = mirrorPrefix(guardPublicKeyHex);
 
 function pendingEvidence() {
   return parseScheduleEvidence({
@@ -55,7 +55,7 @@ test("parseScheduleEvidence keeps only the independently checkable fields", () =
     payerAccountId: "0.0.2001",
     executedTimestamp: null,
     deleted: false,
-    publicKeyPrefixes: ["a".repeat(16)],
+    publicKeyPrefixes: [agentPublicKeyHex],
   });
 });
 
@@ -168,3 +168,18 @@ test("INVARIANT: a real refused schedule proves the guard key is absent", () => 
     /executed schedule must have an executed_timestamp/,
   );
 });
+
+for (const key of ["agentPublicKeyHex", "guardPublicKeyHex"] as const) {
+  for (const length of [2, 16, 62]) {
+    test(`INVARIANT: an executed schedule cannot prove ${key} with ${length} hex characters`, () => {
+      const evidence = parseScheduleEvidence(live.executed.response);
+      const truncated = {
+        ...evidence,
+        publicKeyPrefixes: evidence.publicKeyPrefixes.map((prefix) =>
+          prefix === live[key] ? prefix.slice(0, length) : prefix,
+        ),
+      };
+      assert.throws(() => assertExecutedScheduleEvidence(truncated, liveSigners), /key prefix must be present/);
+    });
+  }
+}

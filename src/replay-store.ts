@@ -11,6 +11,7 @@ export type MandateReviewReservation = {
 
 export interface CompletedMandateReview {
   outcome: "approved";
+  transactionBase64?: string;
   recipientAccountId: string;
   amountTinybars: string;
   settlementId: string;
@@ -104,6 +105,12 @@ function validateCompletedReview(value: CompletedMandateReview): void {
   if (value.outcome !== "approved") {
     throw new Error("review outcome must be approved");
   }
+  if (value.transactionBase64 !== undefined) {
+    const bytes = Buffer.from(value.transactionBase64, "base64");
+    if (bytes.length === 0 || bytes.toString("base64") !== value.transactionBase64) {
+      throw new Error("transactionBase64 must be canonical nonempty base64");
+    }
+  }
   if (!scheduleIdPattern.test(value.recipientAccountId)) {
     throw new Error("recipientAccountId must be a canonical numeric Hedera AccountID");
   }
@@ -137,6 +144,9 @@ function completedReviewFromRow(
 
   const completion: CompletedMandateReview = {
     outcome: "approved",
+    ...(row.transaction_base64 === null ? {} : {
+      transactionBase64: requireStoredString(row, "transaction_base64"),
+    }),
     recipientAccountId: requireStoredString(row, "recipient_account_id"),
     amountTinybars: requireStoredString(row, "amount_tinybars"),
     settlementId: requireStoredString(row, "settlement_id"),
@@ -158,6 +168,7 @@ function initializeDatabase(database: DatabaseSync): void {
       amount_tinybars TEXT,
       settlement_id TEXT,
       mirror_node_url TEXT,
+      transaction_base64 TEXT,
       PRIMARY KEY (tenant_id, nonce)
     ) STRICT
   `);
@@ -173,6 +184,7 @@ function initializeDatabase(database: DatabaseSync): void {
     ["amount_tinybars", "TEXT"],
     ["settlement_id", "TEXT"],
     ["mirror_node_url", "TEXT"],
+    ["transaction_base64", "TEXT"],
   ] as const;
   for (const [name, type] of responseColumns) {
     if (!columns.has(name)) {
@@ -345,7 +357,8 @@ export function completeMandateReview(
              recipient_account_id = ?,
              amount_tinybars = ?,
              settlement_id = ?,
-             mirror_node_url = ?
+             mirror_node_url = ?,
+             transaction_base64 = ?
          WHERE tenant_id = ?
            AND nonce = ?
            AND mandate_digest = ?
@@ -357,6 +370,7 @@ export function completeMandateReview(
         completion.amountTinybars,
         completion.settlementId,
         completion.mirrorNodeUrl,
+        completion.transactionBase64 ?? null,
         reservation.tenantId,
         reservation.nonce,
         reservation.mandateDigest,
@@ -390,7 +404,8 @@ export function getMandateReviewState(
                 recipient_account_id,
                 amount_tinybars,
                 settlement_id,
-                mirror_node_url
+                mirror_node_url,
+                transaction_base64
          FROM mandate_reviews
          WHERE tenant_id = ?
            AND nonce = ?
