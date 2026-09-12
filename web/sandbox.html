@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Countersign sandbox — try the policy</title>
+    <meta name="description" content="Try an owner-signed authorization policy with operator-funded accounts on Hedera testnet. Inspect each run on the public ledger." />
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #172019;
+        --muted: #4d574f;
+        --canvas: #f4f1e8;
+        --surface: #fffcf4;
+        --line: #b8b4a8;
+        --line-strong: #687269;
+        --green: #145c43;
+        --green-soft: #dcebe3;
+        --red: #8b2d27;
+        --red-soft: #f8e9e5;
+        --serif: Charter, "Bitstream Charter", "Iowan Old Style", Georgia, "Times New Roman", serif;
+        --mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+      }
+      * { box-sizing: border-box; }
+      html { font-family: var(--serif); font-size: 106.25%; line-height: 1.55; color: var(--ink); background: var(--canvas); -webkit-text-size-adjust: 100%; }
+      body { min-height: 100vh; margin: 0; }
+      body::before { display: block; height: 0.4rem; background: var(--green); content: ""; }
+      .wrap { width: min(72rem, 100% - 2.5rem); margin-inline: auto; }
+      .skip-link { position: fixed; top: 0.75rem; left: 0.75rem; z-index: 4; transform: translateY(-180%); padding: 0.7rem 0.9rem; font-family: var(--mono); font-size: 0.8rem; color: var(--canvas); background: var(--ink); }
+      .skip-link:focus { transform: translateY(0); }
+      .site-head { border-bottom: 1px solid var(--line); }
+      .head-row { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 1rem 2rem; padding: 1.1rem 0 0.9rem; }
+      .brand { display: grid; gap: 0.05rem; color: var(--ink); text-decoration: none; }
+      .brand-name { font-size: 1.4rem; font-weight: 400; letter-spacing: -0.02em; line-height: 1; }
+      .brand-sub { font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.06em; color: var(--muted); }
+      .site-nav ul { display: flex; flex-wrap: wrap; gap: 0.35rem 1.35rem; margin: 0; padding: 0; list-style: none; }
+      .site-nav a { display: inline-block; padding: 0.2rem 0; font-family: var(--mono); font-size: 0.74rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); text-decoration: none; border-bottom: 1px solid transparent; }
+      .site-nav a:hover { color: var(--ink); }
+      .site-nav a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--ink); }
+      h1, h2, h3, p { margin-top: 0; }
+      h1 { max-width: 15ch; margin-bottom: 1.25rem; font-size: clamp(2.5rem, 7.5vw, 5rem); font-weight: 400; letter-spacing: -0.03em; line-height: 0.98; text-wrap: balance; }
+      h2 { margin-bottom: 1rem; font-size: clamp(1.7rem, 3.4vw, 2.5rem); font-weight: 400; letter-spacing: -0.025em; line-height: 1.08; }
+      h3 { margin-bottom: 0.35rem; font-size: 1.2rem; font-weight: 400; letter-spacing: -0.01em; }
+      p { max-width: 40rem; }
+      a { color: var(--ink); overflow-wrap: anywhere; text-decoration-color: var(--line-strong); text-decoration-thickness: 1px; text-underline-offset: 0.2em; }
+      a:hover { color: var(--green); text-decoration-color: var(--green); }
+      .skip-link:hover { color: var(--canvas); text-decoration-color: var(--canvas); }
+      :focus-visible { outline: 2px solid var(--green); outline-offset: 3px; }
+      .skip-link:focus-visible { outline-color: var(--ink); }
+      .eyebrow, legend, .field-label { font-family: var(--mono); font-size: 0.74rem; font-weight: 400; letter-spacing: 0.08em; text-transform: uppercase; }
+      .eyebrow { margin-bottom: 1.5rem; color: var(--muted); }
+      .mono, .state, .evidence { font-family: var(--mono); font-size: 0.82rem; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+      .page-hero { padding: 4.5rem 0 3.5rem; border-bottom: 1px solid var(--line); }
+      .lede { font-size: 1.2rem; line-height: 1.5; max-width: 34rem; }
+      .disclosure { color: var(--muted); }
+      .section { padding: 4.5rem 0; border-bottom: 1px solid var(--line); }
+      .instrument { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 2rem 3rem; align-items: start; }
+      fieldset { min-width: 0; margin: 0 0 1.5rem; padding: 0; border: 0; }
+      legend { margin-bottom: 0.6rem; }
+      .choice { display: grid; grid-template-columns: 1.1rem minmax(0, 1fr); align-items: start; gap: 0.65rem; padding: 0.85rem 0; border-top: 1px solid var(--line); cursor: pointer; }
+      .choice small { display: block; color: var(--muted); font-size: 0.92rem; }
+      input, button { font: inherit; color: var(--ink); border-radius: 0; }
+      input[type="radio"] { appearance: none; width: 1rem; height: 1rem; margin: 0.3rem 0 0; border: 1px solid var(--line-strong); background: var(--surface); }
+      input[type="radio"]:checked { background: var(--ink); box-shadow: inset 0 0 0 3px var(--surface); }
+      .field-label { display: block; margin-bottom: 0.6rem; }
+      input[type="number"] { width: 100%; padding: 0.65rem; border: 1px solid var(--line-strong); background: var(--surface); font-family: var(--mono); font-variant-numeric: tabular-nums; }
+      .hint { margin: 0.65rem 0 1.5rem; color: var(--muted); font-size: 0.92rem; }
+      .btn { width: 100%; padding: 0.7rem 1.1rem; border: 1px solid var(--ink); font-family: var(--mono); font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--canvas); background: var(--ink); cursor: pointer; }
+      .btn:hover { text-decoration: underline; text-underline-offset: 0.2em; }
+      .btn[aria-disabled="true"] { cursor: wait; }
+      #notice { min-height: 5rem; margin-top: 1rem; }
+      #run-summary { min-height: 3.5rem; }
+      .steps { counter-reset: step; margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--line); }
+      .steps li { counter-increment: step; display: grid; grid-template-columns: 2.5rem minmax(0, 1fr); gap: 0.5rem 1rem; min-height: 7rem; padding: 1rem 0; border-bottom: 1px solid var(--line); }
+      .steps li::before { content: counter(step, decimal-leading-zero); padding-top: 0.2rem; font-family: var(--mono); font-size: 0.9rem; color: var(--muted); }
+      .steps p { margin-bottom: 0.5rem; }
+      .state { color: var(--muted); }
+      .state[data-tone="approved"] { color: var(--green); background: var(--green-soft); }
+      .state[data-tone="refused"] { color: var(--red); background: var(--red-soft); }
+      .state[data-tone="stopped"] { border-left: 2px solid var(--line-strong); padding-left: 0.6rem; }
+      .evidence a { display: block; margin-top: 0.35rem; }
+      #recent-list { min-height: 9rem; margin: 0; padding: 0; list-style: none; }
+      #recent-list li { padding: 1rem 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+      #recent-list p { margin-bottom: 0.4rem; }
+      .site-foot { padding: 2.5rem 0 3rem; color: var(--muted); font-size: 0.92rem; }
+      @media (max-width: 60rem) { .instrument { grid-template-columns: minmax(0, 1fr); } }
+      @media (max-width: 42rem) { .section { padding: 3rem 0; } .page-hero { padding: 3rem 0 2.5rem; } .lede { font-size: 1.08rem; } .steps li { min-height: 10rem; } }
+      @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; } }
+    </style>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-head">
+      <div class="wrap head-row">
+        <a class="brand" href="./index.html">
+          <span class="brand-name">Countersign</span>
+          <span class="brand-sub">authorization sandbox &middot; hedera:testnet</span>
+        </a>
+        <nav class="site-nav" aria-label="Site">
+          <ul>
+            <li><a href="./index.html">Overview</a></li>
+            <li><a href="./how-it-works.html">How it works</a></li>
+            <li><a href="./developers.html">Developers</a></li>
+            <li><a href="./limitations.html">Limitations</a></li>
+            <li><a href="./sandbox.html" aria-current="page">Sandbox</a></li>
+            <li><a href="./evidence.html">Evidence</a></li>
+            <li><a href="./replay.html">Replay</a></li>
+            <li><a href="https://github.com/Ridwannurudeen/countersign-ethonline2026" rel="noreferrer">Source</a></li>
+          </ul>
+        </nav>
+      </div>
+    </header>
+    <main id="main" class="wrap">
+      <section class="page-hero" aria-labelledby="sandbox-title">
+        <p class="eyebrow">Authorization sandbox &middot; Hedera testnet</p>
+        <h1 id="sandbox-title">You are the agent.</h1>
+        <p class="lede">You are the adversary here. The owner of this treasury signed a policy in advance and is offline: pay the vendor account, up to <span class="mono">0.5 ℏ</span>, nothing else. The agent and payer keys are ours and sit on a different host from the guard. The guard is the live guard at this origin — it cannot tell this request from a paying tenant's. Try to get money out.</p>
+        <p class="disclosure">The treasury, agent, payer and vendor accounts are operator-owned and operator-funded. Sandbox runs are operator-run reliability exercises, not users. This is Hedera testnet. You choose the proposal; our accounts pay for it, including a refused review.</p>
+      </section>
+      <section class="section instrument" aria-label="Propose a transfer and inspect its authorization">
+        <div>
+          <h2>Try the policy</h2>
+          <form id="proposal-form">
+            <fieldset>
+              <legend>Recipient</legend>
+              <label class="choice"><input type="radio" name="recipient" value="vendor" checked /><span>Vendor<small>Allowlisted — tests the permitted recipient.</small></span></label>
+              <label class="choice"><input type="radio" name="recipient" value="stranger" /><span>Stranger<small>Not allowlisted — tests the recipient restriction.</small></span></label>
+              <label class="choice"><input type="radio" name="recipient" value="agent" /><span>Agent's own account<small>Self-dealing — tests a payment to the agent.</small></span></label>
+            </fieldset>
+            <label class="field-label" for="amount">Amount in ℏ</label>
+            <input id="amount" name="amount" type="number" inputmode="decimal" min="0.01" max="1.00" step="0.01" value="0.01" required aria-describedby="amount-hint" />
+            <p id="amount-hint" class="hint">Choose <span class="mono">0.01–1.00 ℏ</span>. The signed cap is <span class="mono">0.5 ℏ</span>. Keep Vendor selected and try more than <span class="mono">0.5 ℏ</span> to test the amount cap instead of the recipient restriction; the guard names a different failed check.</p>
+            <button id="submit" class="btn" type="submit">Try this transfer</button>
+          </form>
+          <p id="notice" role="status" aria-live="polite">Choose a recipient and amount, then use “Try this transfer”.</p>
+          <p><a href="#recent">Inspect recent runs</a> — evidence stays available when the operator-funded budget is spent.</p>
+          <noscript><p>JavaScript is needed to submit and poll a run. You can still read <a href="./evidence.html">recorded evidence</a>.</p></noscript>
+        </div>
+        <div id="run" tabindex="-1">
+          <h2>Your run</h2>
+          <p id="run-summary" class="mono" aria-live="polite">No run selected. Your proposal and its authorization steps will appear here.</p>
+          <ol class="steps" aria-label="Authorization chain" aria-live="polite">
+            <li><div><h3>Proposal</h3><p id="proposal-state" class="state">Not started</p><div id="proposal-evidence" class="evidence"></div></div></li>
+            <li><div><h3>Payment</h3><p id="payment-state" class="state">Not started</p><div id="payment-evidence" class="evidence"></div></div></li>
+            <li><div><h3>Review</h3><p id="review-state" class="state">Not started</p></div></li>
+            <li><div><h3>Guard signature</h3><p id="signature-state" class="state">Not started</p></div></li>
+            <li><div><h3>Execution</h3><p id="execution-state" class="state">Not started</p></div></li>
+            <li><div><h3>Verdict</h3><p id="verdict-state" class="state">Not started</p><div id="verdict-evidence" class="evidence"></div></div></li>
+          </ol>
+          <p class="hint">The guard reports its authorization and signature. Execution is checked separately on the mirror node. A refusal stops signing and execution; the paid refusal still produces an HCS verdict. Open the ledger links to check each claim.</p>
+        </div>
+      </section>
+      <section id="recent" class="section" aria-labelledby="recent-title">
+        <h2 id="recent-title">Recent runs</h2>
+        <p>Last <span class="mono">20</span> runs retained by the sandbox service, newest first. All are operator-run reliability exercises on Hedera testnet. Open a run for its full chain, settlement and HCS verdict.</p>
+        <p id="recent-status" role="status" aria-live="polite">Loading recent runs…</p>
+        <ol id="recent-list" aria-label="Recent operator-run exercises"></ol>
+      </section>
+    </main>
+    <footer class="site-foot"><div class="wrap">
+      <p>Countersign is an ETHOnline 2026 entry, Hedera testnet only. Operator-owned accounts and funding; reliability exercises, not external usage.</p>
+      <p><a href="./limitations.html">Read the limitations</a> &middot; <a href="./developers.html">Use the endpoints</a></p>
+    </div></footer>
+    <script type="module">
+      const $ = (selector) => document.querySelector(selector);
+      const mirror = "https://testnet.mirrornode.hedera.com/api/v1/";
+      const names = { vendor: "Vendor", stranger: "Stranger", agent: "Agent's own account" };
+      const stages = ["proposal", "payment", "review", "signature", "execution", "verdict"];
+      const states = { pending: "Waiting", running: "In progress", done: "Done", failed: "Failed — outcome unknown", "never-happened": "Never happened" };
+      let generation = 0;
+      let submitting = false;
+
+      function state(name, text, tone = "") {
+        const element = $(`#${name}-state`);
+        if (element.textContent !== text) element.textContent = text;
+        element.dataset.tone = tone;
+      }
+
+      function evidence(name, label, path) {
+        const element = $(`#${name}-evidence`);
+        if (element.dataset.path === path) return;
+        element.dataset.path = path;
+        element.replaceChildren();
+        if (!path) return;
+        const link = document.createElement("a");
+        link.href = mirror + path;
+        link.textContent = label;
+        link.rel = "noreferrer";
+        element.append(link);
+      }
+
+      function validateRun(run, detailed = false) {
+        if (!run || typeof run.runId !== "string" || !/^[a-zA-Z0-9-]+$/.test(run.runId) ||
+            typeof run.recipient !== "string" || !Object.hasOwn(names, run.recipient) || typeof run.amountTinybars !== "string" ||
+            !/^[1-9][0-9]{6,8}$/.test(run.amountTinybars) || Number(run.amountTinybars) > 100000000 ||
+            !["running", "failed", "approved", "refused"].includes(run.outcome) || run.origin !== "operator" ||
+            (run.scheduleId != null && (typeof run.scheduleId !== "string" || !/^0\.0\.[1-9][0-9]*$/.test(run.scheduleId)))) throw new Error("Unexpected sandbox response");
+        if (detailed && (!Array.isArray(run.steps) || run.steps.length !== 4 ||
+            run.steps.some((step, i) => step.name !== ["envelope", "schedule", "payment", "verdict"][i] || !Object.hasOwn(states, step.state)) ||
+            (run.reason != null && typeof run.reason !== "string") ||
+            (run.settlementId != null && (typeof run.settlementId !== "string" || !/^0\.0\.[1-9][0-9]*(?:@[0-9]+\.[0-9]{9}|-[0-9]+-[0-9]{9})$/.test(run.settlementId))) ||
+            (run.hcsVerdictUrl != null && (typeof run.hcsVerdictUrl !== "string" || !/^https:\/\/testnet\.mirrornode\.hedera\.com\/api\/v1\/topics\/0\.0\.[0-9]+\/messages\/[1-9][0-9]*$/.test(run.hcsVerdictUrl))))) throw new Error("Unexpected sandbox evidence");
+        if (detailed && ["approved", "refused"].includes(run.outcome) &&
+            (!run.scheduleId || !run.settlementId || !run.hcsVerdictUrl ||
+             run.steps.some((step) => step.state !== "done") ||
+             (run.outcome === "refused" && !run.reason))) throw new Error("Incomplete authorization evidence");
+      }
+
+      async function request(path, options = {}) {
+        const response = await fetch(path, { ...options, cache: "no-store", ...(options.method === "POST" ? {} : { signal: AbortSignal.timeout(15000) }) });
+        const body = await response.json();
+        if (!response.ok) {
+          const error = new Error(typeof body.error === "string" ? body.error : "Service unavailable");
+          error.status = response.status;
+          throw error;
+        }
+        return body;
+      }
+
+      function problem(error) {
+        if (error.status === 429) return "You are going too fast. Wait 30 seconds before another run. Inspect recent runs below while you wait.";
+        if (error.status === 503 && /budget exhausted|envelopes exhausted/.test(error.message)) return "The operator-funded budget or pre-signed policy allowance is spent. Inspect recent runs below; their ledger evidence remains available.";
+        if (error.status === 404) return "This run or sandbox route is unavailable at this origin. Inspect recent runs below; your selection is preserved.";
+        return "The sandbox service or network could not complete this request. Your selection is preserved. Inspect recent runs before trying again: a submitted transfer may still be running. Reload to reconnect.";
+      }
+
+      function render(run) {
+        validateRun(run, true);
+        $("#run-summary").textContent = `${names[run.recipient]} · ${(Number(run.amountTinybars) / 100000000).toFixed(2)} ℏ · ${run.outcome}`;
+        const step = Object.fromEntries(run.steps.map((entry) => [entry.name, entry.state]));
+        state("proposal", states[step.schedule]);
+        state("payment", states[step.payment]);
+        state("review", states[step.verdict]);
+        state("signature", "Waiting for the guard's authorization");
+        state("execution", "Waiting for authorization; execution not yet checked");
+        state("verdict", states[step.verdict]);
+        if (run.outcome === "approved" || run.outcome === "refused") {
+          const refused = run.outcome === "refused";
+          state("review", refused ? `Refused — ${run.reason}` : "Approved — within the signed policy", run.outcome);
+          state("signature", refused ? "Never happened — the guard refused to sign" : "Signed — reported by the guard", refused ? "stopped" : "approved");
+          state("verdict", refused ? "Refused — HCS verdict recorded" : "Approved — HCS verdict recorded", run.outcome);
+        } else if (run.outcome === "failed") {
+          const reviewStarted = ["running", "failed", "done"].includes(step.verdict) || step.payment === "failed";
+          for (const name of ["signature", "execution"]) state(name, reviewStarted ? "Unknown — the service was interrupted; inspect the schedule" : "Never happened — review was not reached", reviewStarted ? "" : "stopped");
+          $("#notice").textContent = `The exercise failed, possibly during a network or guard request. ${run.reason} Your selection is preserved. Inspect the recorded evidence before trying again.`;
+        }
+        const settlement = run.settlementId?.replace(/@([0-9]+)\.([0-9]{9})$/, "-$1-$2");
+        evidence("proposal", `Schedule ${run.scheduleId}`, run.scheduleId ? `schedules/${run.scheduleId}` : "");
+        evidence("payment", `Settlement ${run.settlementId}`, settlement ? `transactions/${settlement}` : "");
+        evidence("verdict", run.hcsVerdictUrl ? `HCS verdict ${run.hcsVerdictUrl.slice(mirror.length)}` : "", run.hcsVerdictUrl?.slice(mirror.length) ?? "");
+      }
+
+      async function inspectExecution(run, token) {
+        if (!run.scheduleId) return;
+        try {
+          const schedule = await request(`${mirror}schedules/${run.scheduleId}`);
+          if (token !== generation) return;
+          if (schedule.schedule_id !== run.scheduleId ||
+              (schedule.executed_timestamp !== null && (typeof schedule.executed_timestamp !== "string" || !/^[0-9]+\.[0-9]{9}$/.test(schedule.executed_timestamp)))) throw new Error("Unexpected schedule evidence");
+          if (schedule.executed_timestamp !== null) {
+            state("execution", `${run.outcome === "refused" ? "Mismatch: executed despite refusal" : "Executed"} — mirror timestamp ${schedule.executed_timestamp}`);
+          } else {
+            state("execution", run.outcome === "refused" ? "Never happened as of this check — mirror executed_timestamp is null" : "Not observed — mirror executed_timestamp is null. Reopen this run to check again.", run.outcome === "refused" ? "stopped" : "");
+          }
+        } catch {
+          if (token === generation) state("execution", "Not verified — mirror node unavailable, indexing, or returned unexpected data. Open the schedule or reopen this run to check again.");
+        }
+      }
+
+      async function watch(runId, token) {
+        try {
+          while (token === generation) {
+            const run = await request(`/sandbox/run/${encodeURIComponent(runId)}`);
+            if (token !== generation) return;
+            if (run.runId !== runId) throw new Error("Run identity mismatch");
+            render(run);
+            if (run.outcome !== "running") {
+              if (run.outcome !== "failed") $("#notice").textContent = "Authorization finished. Inspect each ledger link below.";
+              await inspectExecution(run, token);
+              return;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 1500));
+          }
+        } catch (error) {
+          if (token === generation) {
+            $("#notice").textContent = problem(error);
+            $("#run-summary").textContent += " · Updates paused; displayed steps are the last received state.";
+          }
+        }
+      }
+
+      async function recent() {
+        try {
+          const result = await request("/sandbox/runs");
+          if (result.origin !== "operator" || !Array.isArray(result.runs) || result.runs.length > 20) throw new Error("Unexpected run history");
+          result.runs.forEach((run) => validateRun(run));
+          $("#recent-list").replaceChildren();
+          $("#recent-status").textContent = result.runs.length ? "Operator-run records. Schedule links open Hedera; “Open run” loads the full evidence above." : "No runs yet. Your proposal and ledger evidence will appear here after you use “Try this transfer”.";
+          for (const run of result.runs) {
+            const item = document.createElement("li");
+            const summary = document.createElement("p");
+            summary.className = "mono";
+            summary.textContent = `${names[run.recipient]} · ${(Number(run.amountTinybars) / 100000000).toFixed(2)} ℏ · ${run.outcome}`;
+            const open = document.createElement("a");
+            open.href = `#run/${run.runId}`;
+            open.textContent = `Open run ${run.runId}`;
+            item.append(summary, open);
+            if (run.scheduleId) {
+              const link = document.createElement("a");
+              link.href = `${mirror}schedules/${run.scheduleId}`;
+              link.textContent = `Schedule ${run.scheduleId}`;
+              const links = document.createElement("p");
+              links.className = "evidence";
+              links.append(link);
+              item.append(links);
+            }
+            $("#recent-list").append(item);
+          }
+        } catch (error) {
+          $("#recent-status").textContent = `Recent runs could not be refreshed; the service or network may be unavailable. Any displayed records are from the last successful read. Reload to retry. ${problem(error)}`;
+        }
+      }
+
+      function resetChain() {
+        for (const name of stages) state(name, "Waiting for the run record");
+        for (const name of ["proposal", "payment", "verdict"]) evidence(name, "", "");
+        $("#run-summary").textContent = "Loading the authorization chain…";
+      }
+
+      $("#proposal-form").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (submitting) return;
+        submitting = true;
+        $("#submit").setAttribute("aria-disabled", "true");
+        const token = ++generation;
+        resetChain();
+        $("#notice").textContent = "Waiting for the operator-funded service. Queued runs wait for earlier exercises to finish; no result yet.";
+        try {
+          const result = await request("/sandbox/run", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
+            recipient: $("input[name=recipient]:checked").value,
+            amountTinybars: String(Math.round(Number($("#amount").value) * 100000000)),
+          }) });
+          if (typeof result.runId !== "string" || !/^[a-zA-Z0-9-]+$/.test(result.runId)) throw new Error("Missing run identifier");
+          if (token === generation) {
+            history.replaceState(null, "", `#run/${result.runId}`);
+            await watch(result.runId, token);
+          }
+        } catch (error) {
+          if (token === generation) {
+            $("#notice").textContent = problem(error);
+            $("#run-summary").textContent = "No run record received. Check recent runs before retrying.";
+            for (const name of stages) state(name, "No run record received");
+          }
+        } finally {
+          submitting = false;
+          $("#submit").setAttribute("aria-disabled", "false");
+          await recent();
+        }
+      });
+
+      function openRun() {
+        const match = location.hash.match(/^#run\/([a-zA-Z0-9-]+)$/);
+        if (!match) return;
+        resetChain();
+        $("#run").focus();
+        $("#notice").textContent = "Loading the selected operator-run exercise…";
+        void watch(match[1], ++generation);
+      }
+      window.addEventListener("hashchange", openRun);
+      // Clicking the current run again also refreshes its mirror evidence.
+      $("#recent-list").addEventListener("click", (event) => {
+        if (event.target.getAttribute("href") === location.hash) openRun();
+      });
+      void recent();
+      openRun();
+    </script>
+  </body>
+</html>
