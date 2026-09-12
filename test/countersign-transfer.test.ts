@@ -166,6 +166,27 @@ test("re-encode equality refuses an unknown signed body field even with a valid 
 
 // The outermost envelope is checked too: a field the TransactionList schema does not model
 // would otherwise be dropped by the decoder and never reach the inner checks.
+// The countersigned bytes remain submittable until the transaction expires, and the network
+// does not know about mandates. A mandate expiring inside that window would otherwise let the
+// guard's signature authorise a transfer submitted after the owner's policy had lapsed.
+test("INVARIANT: transaction validity must not outlive the mandate", async () => {
+  const expiring: Mandate = { ...mandate, expiresAtEpochSeconds: "1788509100" };
+  const bytes = await fixture();
+  // review time 1788509005 is inside the mandate; the transaction runs to 1788509120.
+  refused(
+    bytes,
+    "transaction validity ends no later than the mandate",
+    context,
+    envelope(expiring),
+  );
+});
+
+test("a transaction ending exactly at the mandate expiry is still authorised", async () => {
+  const exact: Mandate = { ...mandate, expiresAtEpochSeconds: "1788509120" };
+  const result = await validateCountersignTransfer(await fixture(), envelope(exact), context);
+  assert.equal(result.approved, true, JSON.stringify(result));
+});
+
 test("re-encode equality refuses an unknown TransactionList field", async () => {
   const valid = Buffer.from(await fixture(), "base64");
   const bytes = Buffer.concat([

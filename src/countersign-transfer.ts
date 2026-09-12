@@ -243,13 +243,22 @@ export async function validateCountersignTransfer(
         BigInt(start.seconds.toString()) * 1_000_000_000n +
         BigInt(start.nanos ?? 0);
       const nowNanos = now * 1_000_000_000n;
+      const endNanos =
+        startNanos + BigInt(duration.seconds.toString()) * 1_000_000_000n;
+      // The countersigned bytes stay submittable until the transaction expires, and the
+      // network knows nothing about mandates. Without this bound the guard's signature
+      // would outlive the owner's policy window: a mandate expiring at T, reviewed just
+      // before T, would authorise a transfer submittable well after T. The schedule path
+      // enforces the same bound on schedule expiry ("schedule expiration does not exceed
+      // mandate validity"); this is its counterpart on the transfer path.
+      check(
+        "transaction validity ends no later than the mandate",
+        endNanos <= BigInt(mandate.expiresAtEpochSeconds) * 1_000_000_000n,
+      );
       check(
         "transaction has started and remaining validity exceeds the floor",
         startNanos <= nowNanos &&
-          startNanos +
-            BigInt(duration.seconds.toString()) * 1_000_000_000n -
-            nowNanos >
-            BigInt(floorText) * 1_000_000_000n,
+          endNanos - nowNanos > BigInt(floorText) * 1_000_000_000n,
       );
 
       const transfer = body.cryptoTransfer;
