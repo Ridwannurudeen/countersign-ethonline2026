@@ -13,21 +13,45 @@ The testnet treasury uses this authorization tree:
 
 The owner can recover funds directly. The agent can publish a scheduled transfer, but the nested branch remains incomplete until the guard independently resolves that ScheduleID and approves every invariant. Hedera executes the schedule only after the authorization tree is satisfied.
 
+## The live guard
+
+The guard runs as a public service on Hedera testnet:
+
+```text
+https://countersign.gudman.xyz
+```
+
+`GET /guard` returns its public key and HCS-14 identifier and needs no payment, so you can
+identify the service before paying it:
+
+```bash
+curl https://countersign.gudman.xyz/guard
+```
+
+`POST /review` is the paid endpoint. It answers HTTP 402 with a price in HBAR, and does no
+consensus work until an x402 payment settles through the Blocky402 facilitator.
+
 ## Live evidence
 
-Countersign ran end to end on Hedera testnet on 2026-09-12. Every link below is served by
-the public mirror node, so each claim is checkable without running this code. The refusal
-is provable by absence: the schedule exists, the guard's key prefix is missing from
-`signatures[]`, and `executed_timestamp` is null.
+The runs below were made from a separate machine against that public endpoint on
+2026-09-12. The caller holds the owner, agent and payer keys and no guard key; the guard
+holds only its own. Every link is served by the public mirror node, so each claim is
+checkable without running this code. The refusal is provable by absence: the schedule
+exists, the guard's key prefix is missing from `signatures[]`, and `executed_timestamp` is
+null.
 
 | | Guard approved | Guard refused |
 | --- | --- | --- |
-| Schedule | [`0.0.10499731`](https://testnet.mirrornode.hedera.com/api/v1/schedules/0.0.10499731) | [`0.0.10499755`](https://testnet.mirrornode.hedera.com/api/v1/schedules/0.0.10499755) |
-| `executed_timestamp` | `1789212148.179991105` | `null` |
+| Schedule | [`0.0.10502591`](https://testnet.mirrornode.hedera.com/api/v1/schedules/0.0.10502591) | [`0.0.10502603`](https://testnet.mirrornode.hedera.com/api/v1/schedules/0.0.10502603) |
+| `executed_timestamp` | `1789222019.139668105` | `null` |
 | Signer prefixes | agent **and** guard | agent only |
 | Treasury delta | exactly the mandated `25000000` tinybars | unchanged |
-| x402 settlement | [`0.0.7162784@1789212138.066299970`](https://testnet.mirrornode.hedera.com/api/v1/transactions/0.0.7162784-1789212138-066299970) | [`0.0.7162784@1789212178.512467549`](https://testnet.mirrornode.hedera.com/api/v1/transactions/0.0.7162784-1789212178-512467549) |
-| HCS verdict | [topic `0.0.10499735`](https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10499735/messages/1) | [topic `0.0.10499757`](https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10499757/messages/1) |
+| x402 settlement | [`0.0.7162784@1789222008.274977091`](https://testnet.mirrornode.hedera.com/api/v1/transactions/0.0.7162784-1789222008-274977091) | [`0.0.7162784@1789222049.843720974`](https://testnet.mirrornode.hedera.com/api/v1/transactions/0.0.7162784-1789222049-843720974) |
+| HCS verdict | [topic `0.0.10502545`, message 1](https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10502545/messages/1) | [topic `0.0.10502545`, message 2](https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10502545/messages/2) |
+
+The guarded treasury is [`0.0.10502365`](https://testnet.mirrornode.hedera.com/api/v1/accounts/0.0.10502365),
+the agent is [`0.0.10502367`](https://testnet.mirrornode.hedera.com/api/v1/accounts/0.0.10502367),
+and the guard is [`0.0.10502369`](https://testnet.mirrornode.hedera.com/api/v1/accounts/0.0.10502369).
 
 The caller pays the same review price either way — a refusal is a delivered service, not a
 failed request. Both settlements were completed by the Blocky402 facilitator on
@@ -49,13 +73,15 @@ separate from the treasury, expected agent, guard operator, and their authorizat
 keys. The narrated flow also pays from a separately keyed account, so none of the
 treasury authorization keys enters its decoded x402 payload.
 
-**There is no public endpoint.** The guard is a service the treasury owner runs, and
-`npm run demo` starts it on `127.0.0.1` for the duration of a run. One guard process
-authorizes exactly one treasury: the owner, agent and guard keys, the treasury account and
-the expected agent account are all fixed in its configuration and checked against consensus
-at startup. It is not a multi-tenant service, and nothing in this repository was deployed to
-a public host. What is live is the evidence — every payment, verdict and schedule above was
-settled on Hedera testnet and is readable from the public mirror node.
+**One guard process authorizes exactly one treasury.** The owner, agent and guard keys, the
+treasury account and the expected agent account are all fixed in its configuration and
+re-checked against consensus at startup. It is not a multi-tenant service: the deployed
+guard at `countersign.gudman.xyz` reviews the treasury above and nothing else. A second
+treasury needs a second guard.
+
+The deployed host holds exactly one private key, the guard's own. The owner and agent keys
+that together authorize the treasury never leave the caller, which is why the guard cannot
+move the funds it protects either.
 
 The guard requires all of the following:
 
@@ -164,6 +190,35 @@ exact `cryptoTransfer` oneof check, HBAR-only transfer structure, both approval 
 fields, numeric IDs, amount policy, same-node before/after network-version gates,
 strict HTTP boundaries, real worker-thread replay contention, decoded x402 payment
 identity separation, HCS-14 known answers, and HCS verdict records.
+
+## Pay the live guard yourself
+
+`npm run hosted-review` is a caller that pays the deployed guard over the public internet.
+It holds the owner, agent and payer keys and never holds the guard key, so the service it
+pays is genuinely a separate process on a separate machine.
+
+```bash
+npm run hosted-review            # in-policy transfer, expect an approval
+npm run hosted-review refused    # out-of-policy recipient, expect a paid refusal
+```
+
+Both read `var/hosted-caller.env`. That file, and the guard's own configuration, are written
+once by:
+
+```bash
+npm run provision-hosted
+```
+
+which creates the persistent treasury, agent, guard, payer and fee accounts and then splits
+the result deliberately. `var/hosted-guard.env` receives exactly one private key, the
+guard's, and is the only file that belongs on the host. `var/hosted-caller.env` keeps the
+owner, agent and payer keys and must not leave the caller's machine. Both files are
+gitignored.
+
+The host runs `npm run serve-guard` under systemd behind nginx. The service re-derives the
+treasury key tree from consensus at startup and refuses to serve unless the owner, agent and
+guard keys are pairwise distinct and the fee destination is separate from all three, so a
+mistake in that configuration stops the process rather than weakening a review.
 
 ## Run the narrated testnet flows
 

@@ -23,11 +23,16 @@ before this runbook was written:
 | Command | Wall clock | What it proves |
 | --- | --- | --- |
 | `npm run spike` | 27s | The network itself refuses the agent acting alone |
-| `npm run demo` | 39s | A paid review approves an in-policy transfer |
-| `npm run refusal` | 35s | A paid review refuses an out-of-policy transfer |
+| `npm run hosted-review` | ~45s | A paid review of an in-policy transfer, by the **live public guard** |
+| `npm run hosted-review refused` | ~40s | A paid refusal of an out-of-policy transfer, by the same guard |
 
-That is 101 seconds of screen time. With narration over the top and a short opening and
-close, the natural finished length is about three minutes.
+That is about 110 seconds of screen time. With narration over the top and a short opening
+and close, the natural finished length is about three minutes.
+
+**Record against the deployed guard, not the local one.** `npm run demo` and
+`npm run refusal` still work and still prove the protocol, but they start a guard inside
+their own process on `127.0.0.1`. The `hosted-review` commands send the same request over
+the public internet to `https://countersign.gudman.xyz`, which is the thing worth showing.
 
 ## Before you hit record
 
@@ -69,14 +74,15 @@ not, and the owner-only recovery branch works.
 > "The same run shows the two escapes: the owner can always recover funds alone, and a
 > schedule the guard refuses simply never executes."
 
-### Scene 3 — A paid approval (0:55–1:45) — `npm run demo`
+### Scene 3 — A paid approval (0:55–1:45) — `npm run hosted-review`
 
 Let steps 1 through 3 scroll. Slow down at step 4.
 
 > "The agent publishes the transfer it wants as a Hedera Scheduled Transaction. It is
 > public and it is unexecuted — the agent's signature is on it, the guard's is not.
-> The agent now asks the guard to review it, and the guard answers with HTTP 402, Payment
-> Required, quoting its price in HBAR."
+> The agent now asks the guard to review it. That guard is not running on this machine —
+> it is a service at countersign dot gudman dot xyz — and it answers with HTTP 402,
+> Payment Required, quoting its price in HBAR."
 
 At step 5, the settlement line:
 
@@ -96,7 +102,7 @@ At step 7:
 > The treasury moved by exactly the mandated amount, and the verdict is written to a
 > Hedera Consensus Service topic."
 
-### Scene 4 — A paid refusal (1:45–2:35) — `npm run refusal`
+### Scene 4 — A paid refusal (1:45–2:35) — `npm run hosted-review refused`
 
 > "Same agent, same guard, same price. This time the transfer goes to an account outside
 > the owner's allowlist."
@@ -113,6 +119,11 @@ On the final evidence block:
 > agent's key prefix is in the signature list, and the treasury balance is unchanged."
 
 ### Scene 5 — Independent verification (2:35–3:00)
+
+Optionally show `curl https://countersign.gudman.xyz/guard` first — it returns the guard's
+public key and HCS-14 identifier, free, which is how a caller identifies the service before
+paying it.
+
 
 Paste the refused ScheduleID into the mirror-node tab in the browser. Show the raw JSON.
 
@@ -144,8 +155,9 @@ Three more wordings to keep honest, all of which the repository already follows:
 - Say "the network rejects it", not "it fails at consensus".
 - Say "my own runs" or "operator runs", never "users". Say "testnet trials", never
   "revenue".
-- There is **no public endpoint**. Do not call the guard hosted or live-on-the-internet.
-  The guard runs locally; the *evidence* is what is live and public.
+- The guard **is** publicly hosted, at `https://countersign.gudman.xyz`, and you can say so.
+  What you must not say is that it is multi-tenant or a marketplace: one guard process
+  authorizes exactly one treasury, and a second treasury would need a second guard.
 
 ## After recording
 

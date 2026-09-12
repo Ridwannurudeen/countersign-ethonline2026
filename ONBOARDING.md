@@ -3,6 +3,12 @@
 This is a Hedera **testnet-only** walkthrough. It creates real testnet accounts,
 submits real testnet transactions, and pays testnet fees. It does not support mainnet.
 
+> **The guard is live at `https://countersign.gudman.xyz`.** You can pay it without running
+> any of this: `npm run hosted-review` sends a real x402-settled review request to that
+> public endpoint. `curl https://countersign.gudman.xyz/guard` returns its identity for
+> free. The walkthrough below runs your own guard instead, which is what a treasury owner
+> would do.
+>
 > **Live-status disclosure:** these steps were executed end to end against Hedera testnet
 > on 2026-09-12. `npm run spike`, `npm run demo` and `npm run refusal` all completed, and
 > every outcome below is checkable on the mirror node without running this code:
