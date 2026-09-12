@@ -1,0 +1,162 @@
+# Demo video runbook
+
+Everything needed to record the submission video in one sitting. Read the two traps in
+"What must not be said" before recording — both are claims an earlier plan made that this
+build does not support.
+
+## Hard requirements
+
+ETHGlobal rejects a video that breaks any of these:
+
+- **2 to 4 minutes.** Under two or over four is auto-rejected.
+- **720p or higher.**
+- **Your real voice.** No text-to-speech, no AI voiceover.
+- **No sped-up footage.** Cutting between takes and between clips is fine; changing
+  playback rate is not.
+- **No phone recording of a screen**, and no music over text in place of narration.
+
+## Verified timings
+
+All three scripts were run end to end against Hedera testnet on 2026-09-12 immediately
+before this runbook was written:
+
+| Command | Wall clock | What it proves |
+| --- | --- | --- |
+| `npm run spike` | 27s | The network itself refuses the agent acting alone |
+| `npm run demo` | 39s | A paid review approves an in-policy transfer |
+| `npm run refusal` | 35s | A paid review refuses an out-of-policy transfer |
+
+That is 101 seconds of screen time. With narration over the top and a short opening and
+close, the natural finished length is about three minutes.
+
+## Before you hit record
+
+1. `npm test` — expect 360 passing, 0 failing.
+2. Terminal at a large font, full screen, dark background. The output is wide; make sure
+   `PASS:` lines do not wrap.
+3. Have `.env` already configured. The scripts fail by name on a missing value, which is
+   good behaviour but a bad take.
+4. Close anything that could raise a notification.
+5. Have one browser tab open on
+   `https://testnet.mirrornode.hedera.com/api/v1/schedules/` so you can paste a ScheduleID
+   straight into it for the evidence beat.
+6. Each run creates fresh accounts, so **the IDs on screen will not match this document**.
+   That is expected. Read whatever your run prints.
+
+## Shot list
+
+### Scene 1 — The claim (0:00–0:20, talking over a still or the README)
+
+> "This is a Hedera treasury controlled by an autonomous agent. The agent can propose
+> payments all day. It cannot make one. Moving money needs a second signature from an
+> independent guard that the agent does not control — and that guard charges for every
+> decision it makes."
+
+### Scene 2 — The network refuses the agent (0:20–0:55) — `npm run spike`
+
+Run it. The line that matters is `Agent-only direct transfer rejected with
+INVALID_SIGNATURE`. Pause on it.
+
+> "The treasury key is one-of: either the owner alone, or the agent and the guard
+> together. Here the agent signs a transfer by itself and submits it. The Hedera network
+> rejects it. This is not a policy check inside the agent's own code that a compromised
+> agent could skip — the agent's signature does not satisfy the account's key, so the
+> transfer cannot happen."
+
+Then, as the same run continues: the approved schedule executes and the refused one does
+not, and the owner-only recovery branch works.
+
+> "The same run shows the two escapes: the owner can always recover funds alone, and a
+> schedule the guard refuses simply never executes."
+
+### Scene 3 — A paid approval (0:55–1:45) — `npm run demo`
+
+Let steps 1 through 3 scroll. Slow down at step 4.
+
+> "The agent publishes the transfer it wants as a Hedera Scheduled Transaction. It is
+> public and it is unexecuted — the agent's signature is on it, the guard's is not.
+> The agent now asks the guard to review it, and the guard answers with HTTP 402, Payment
+> Required, quoting its price in HBAR."
+
+At step 5, the settlement line:
+
+> "The caller pays over x402. That settlement is executed by the Blocky402 facilitator on
+> Hedera testnet — here is the transaction ID."
+
+At step 6, as the checks scroll:
+
+> "Only now does the guard do any work. It resolves the ScheduleID from consensus — it
+> never trusts a summary the caller sent it — and checks every decoded field against a
+> mandate the treasury owner signed. Recipient, amount, asset, fee, expiry, who created it,
+> who pays for it, and that its own key is not already on it."
+
+At step 7:
+
+> "Every check passes, so the guard adds its signature and Hedera executes the schedule.
+> The treasury moved by exactly the mandated amount, and the verdict is written to a
+> Hedera Consensus Service topic."
+
+### Scene 4 — A paid refusal (1:45–2:35) — `npm run refusal`
+
+> "Same agent, same guard, same price. This time the transfer goes to an account outside
+> the owner's allowlist."
+
+Stop on the `REFUSED:` line.
+
+> "The guard refuses. It still charges for the review — a refusal is a delivered service,
+> not a failed request."
+
+On the final evidence block:
+
+> "And this is what refusal looks like on Hedera. There is no rejection state to point at.
+> The proof is absence: the schedule exists, its executed timestamp is null, only the
+> agent's key prefix is in the signature list, and the treasury balance is unchanged."
+
+### Scene 5 — Independent verification (2:35–3:00)
+
+Paste the refused ScheduleID into the mirror-node tab in the browser. Show the raw JSON.
+
+> "None of this needs my code to check. That is the public Hedera mirror node, and every
+> claim I just made is a field in it. The repository has the same links written down, plus
+> the full evidence manifest."
+
+Close:
+
+> "Everything you saw ran on Hedera testnet. These are my own runs, not outside users, and
+> the repository says so."
+
+## What must not be said
+
+Two claims from the original plan are **not true of this build**. Saying either on camera
+would be caught by a Hedera-literate judge.
+
+- **Do not say the guard "signs the exact transaction bytes."** It does not.
+  `ScheduleSignTransaction` signs a body containing only the ScheduleID. The guard
+  *resolves* that ScheduleID from consensus and validates the decoded fields, then
+  authorizes the ScheduleID. The accurate framing is used throughout the script above.
+- **Do not say the agent was prompt-injected.** There is no LLM agent and no injection in
+  this repository. `make attack` proposes a transfer to a non-allowlisted recipient. Call
+  it an out-of-policy transfer, or a compromised agent proposing one — not a demonstrated
+  injection.
+
+Three more wordings to keep honest, all of which the repository already follows:
+
+- Say "the network rejects it", not "it fails at consensus".
+- Say "my own runs" or "operator runs", never "users". Say "testnet trials", never
+  "revenue".
+- There is **no public endpoint**. Do not call the guard hosted or live-on-the-internet.
+  The guard runs locally; the *evidence* is what is live and public.
+
+## After recording
+
+The runs you record are real and they emit evidence events. Fold them in so the repository
+and the video agree:
+
+```bash
+npm run build-evidence
+git add web/evidence.json
+git commit -m "chore: record the demo session runs in the evidence manifest"
+```
+
+Then check the uploaded video plays, and that it is still between 2 and 4 minutes after
+editing.
