@@ -158,6 +158,16 @@ test("re-encode equality refuses an unknown signed body field even with a valid 
   refused(bytes, "signed body re-encode equality");
 });
 
+// The outermost envelope is checked too: a field the TransactionList schema does not model
+// would otherwise be dropped by the decoder and never reach the inner checks.
+test("re-encode equality refuses an unknown TransactionList field", async () => {
+  const valid = Buffer.from(await fixture(), "base64");
+  const bytes = Buffer.concat([valid, Buffer.from([0xf8, 0x7f, 0x01])]).toString(
+    "base64",
+  );
+  refused(bytes, "transaction list re-encode equality");
+});
+
 test("re-encode equality refuses an unknown nested transfer field", async () => {
   const bytes = rewrite(await fixture(), (body) => {
     const transfer = Buffer.concat([
