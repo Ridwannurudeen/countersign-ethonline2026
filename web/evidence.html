@@ -147,6 +147,31 @@
         text-underline-offset: 0.18em;
       }
 
+      .site-nav {
+        margin-bottom: 2.25rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid #b8b4a8;
+      }
+
+      .site-nav ul {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem 1.25rem;
+        margin: 0;
+        padding: 0;
+        font-size: 0.85rem;
+        list-style: none;
+      }
+
+      .site-nav a {
+        color: #4d574f;
+      }
+
+      .site-nav a[aria-current="page"] {
+        color: #172019;
+        font-weight: 750;
+      }
+
       a:hover {
         color: #00376c;
       }
@@ -218,6 +243,18 @@
   </head>
   <body>
     <header>
+      <nav class="site-nav" aria-label="Site">
+        <ul>
+          <li><a href="./index.html">Overview</a></li>
+          <li><a href="./how-it-works.html">How it works</a></li>
+          <li><a href="./developers.html">Developers</a></li>
+          <li><a href="./limitations.html">Limitations</a></li>
+          <li><a href="./sandbox.html">Sandbox</a></li>
+          <li><a href="./evidence.html" aria-current="page">Evidence</a></li>
+          <li><a href="./replay.html">Replay</a></li>
+          <li><a href="https://github.com/Ridwannurudeen/countersign-ethonline2026" rel="noreferrer">Source</a></li>
+        </ul>
+      </nav>
       <p class="eyebrow">Countersign / Hedera testnet</p>
       <h1>Schedule evidence, read from Hedera.</h1>
       <p class="lede">

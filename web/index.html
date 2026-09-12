@@ -825,7 +825,8 @@
             match. Callers pay the guard per review over x402, and the answer can be no.
           </p>
           <div class="actions">
-            <a class="btn btn-primary" href="#live-pairs">Read a refusal on the ledger</a>
+            <a class="btn btn-primary" href="./sandbox.html">Try to get money out</a>
+            <a class="btn" href="#live-pairs">Read a refusal on the ledger</a>
             <a class="btn" href="./developers.html">The endpoints</a>
           </div>
           <p class="qualifier">
@@ -1052,12 +1053,15 @@
               <a href="./evidence.json">evidence.json</a>, 5 approved and 5 refused, all made by
               the operator from a separate machine against the public endpoint. The pair below
               is one of them. The buyer path has 2 recorded runs on topic 0.0.10507040, 1
-              approved and 1 refused. The two sets are counted separately and never summed.
+              approved and 1 refused. A third set comes from the
+              <a href="./sandbox.html">sandbox</a>, where a visitor drives the same guard from the
+              browser; those runs are listed live on that page and are counted in neither total.
+              The sets are counted separately and never summed.
             </p>
             <p>
               Every cell links to the public mirror node. The
-              <a href="./evidence.html">evidence page</a> re-fetches every recorded schedule in
-              your browser, and the <a href="./replay.html">replay page</a> walks through one
+              <a href="./evidence.html">evidence page</a> re-fetches every schedule in
+              <a href="./evidence.json">evidence.json</a> in your browser, and the <a href="./replay.html">replay page</a> walks through one
               recorded review check by check.
             </p>
           </div>
@@ -1174,7 +1178,7 @@
             <ul>
               <li><a href="https://countersign.gudman.xyz/guard" rel="noreferrer">GET /guard</a> &mdash; key and identifier, unpaid</li>
               <li><a href="https://countersign.gudman.xyz/.well-known/agent.json" rel="noreferrer">GET /.well-known/agent.json</a> &mdash; agent card, unpaid</li>
-              <li><a href="./evidence.html">Evidence</a> &mdash; every recorded schedule, checked in your browser</li>
+              <li><a href="./evidence.html">Evidence</a> &mdash; every schedule in evidence.json, checked in your browser</li>
               <li><a href="./replay.html">Replay</a> &mdash; a recorded review, step by step</li>
             </ul>
           </section>
