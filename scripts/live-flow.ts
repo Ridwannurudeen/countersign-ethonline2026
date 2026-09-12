@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import type { Server } from "node:http";
 import { resolve } from "node:path";
 
@@ -350,8 +350,13 @@ function printScheduleEvidence(evidence: ScheduleEvidence): void {
         payer_account_id: evidence.payerAccountId,
         executed_timestamp: evidence.executedTimestamp,
         deleted: evidence.deleted,
-        signatures: evidence.publicKeyPrefixes.map((publicKeyPrefix) => ({
-          public_key_prefix: publicKeyPrefix,
+        // public_key_prefix is printed exactly as the mirror node returns it,
+        // so this output can be compared field by field with the evidence URL.
+        signatures: evidence.publicKeyPrefixes.map((publicKeyHex) => ({
+          public_key_prefix: Buffer.from(publicKeyHex, "hex").toString(
+            "base64",
+          ),
+          public_key_hex: publicKeyHex,
         })),
       },
       null,
@@ -424,9 +429,7 @@ function requirePaymentQuote(paymentRequired: PaymentRequired, payTo: string) {
 
 export async function runLiveFlow(outcome: LiveFlowOutcome): Promise<void> {
   const environment = loadEnvironment();
-  const operatorAccountId = AccountId.fromString(
-    environment.operatorAccountId,
-  );
+  const operatorAccountId = AccountId.fromString(environment.operatorAccountId);
   if (operatorAccountId.toString() !== environment.operatorAccountId) {
     throw new Error(
       "HEDERA_OPERATOR_ACCOUNT_ID must be a canonical numeric account ID",
@@ -453,10 +456,14 @@ export async function runLiveFlow(outcome: LiveFlowOutcome): Promise<void> {
         : "COUNTERSIGN: OUT-OF-POLICY TRANSFER";
     console.log(`\n${title}\n`);
 
-    const versionInfo = await new NetworkVersionInfoQuery().execute(operatorClient);
+    const versionInfo = await new NetworkVersionInfoQuery().execute(
+      operatorClient,
+    );
     const protobufVersion = formatVersion(versionInfo.protobufVersion);
     const servicesVersion = formatVersion(versionInfo.servicesVersion);
-    console.log("[1/7] Verify the live network and provision the authorization boundary");
+    console.log(
+      "[1/7] Verify the live network and provision the authorization boundary",
+    );
     console.log(`  HAPI protobuf version: ${protobufVersion}`);
     console.log(`  Services version: ${servicesVersion}`);
     if (protobufVersion !== environment.allowedProtobufVersion) {
@@ -477,10 +484,7 @@ export async function runLiveFlow(outcome: LiveFlowOutcome): Promise<void> {
     const treasuryKey = new KeyList(
       [
         ownerPrivateKey.publicKey,
-        new KeyList(
-          [agentPrivateKey.publicKey, guardPrivateKey.publicKey],
-          2,
-        ),
+        new KeyList([agentPrivateKey.publicKey, guardPrivateKey.publicKey], 2),
       ],
       1,
     );
@@ -538,8 +542,12 @@ export async function runLiveFlow(outcome: LiveFlowOutcome): Promise<void> {
       guardPrivateKey,
     );
     console.log("  Authorization: 1-of[owner, 2-of[agent, guard]]");
-    console.log(`  Agent public key: ${agentPrivateKey.publicKey.toStringRaw()}`);
-    console.log(`  Guard public key: ${guardPrivateKey.publicKey.toStringRaw()}`);
+    console.log(
+      `  Agent public key: ${agentPrivateKey.publicKey.toStringRaw()}`,
+    );
+    console.log(
+      `  Guard public key: ${guardPrivateKey.publicKey.toStringRaw()}`,
+    );
 
     const nowEpochSeconds = Math.floor(Date.now() / 1_000);
     const envelope = buildMandate(
@@ -551,7 +559,9 @@ export async function runLiveFlow(outcome: LiveFlowOutcome): Promise<void> {
     );
     const digest = mandateDigest(envelope.mandate);
     console.log("\n[2/7] Owner-signed mandate");
-    console.log(JSON.stringify({ ...envelope, mandateDigest: digest }, null, 2));
+    console.log(
+      JSON.stringify({ ...envelope, mandateDigest: digest }, null, 2),
+    );
 
     const recipientAccountId =
       outcome === "approved" ? operatorAccountId : paymentPayerAccountId;
@@ -581,7 +591,9 @@ export async function runLiveFlow(outcome: LiveFlowOutcome): Promise<void> {
     const pendingEvidence = await fetchScheduleEvidence(scheduleId);
     assertPendingScheduleEvidence(pendingEvidence, expectedEvidence);
     printScheduleEvidence(pendingEvidence);
-    console.log("  The agent signature is present, but the schedule is unexecuted.");
+    console.log(
+      "  The agent signature is present, but the schedule is unexecuted.",
+    );
 
     mkdirSync(resolve("var"), { recursive: true });
     server = await createProductionReviewServer(guardClient, {
@@ -701,7 +713,8 @@ export async function runLiveFlow(outcome: LiveFlowOutcome): Promise<void> {
     console.log(`  Account evidence: ${accountMirrorNodeUrl(quote.payTo)}`);
 
     console.log("\n[5/7] Caller settles the x402 review price");
-    const paymentPayload = await httpPayer.createPaymentPayload(paymentRequired);
+    const paymentPayload =
+      await httpPayer.createPaymentPayload(paymentRequired);
     const paidResponse = await fetch(GUARD_URL, {
       method: "POST",
       headers: {
@@ -713,7 +726,9 @@ export async function runLiveFlow(outcome: LiveFlowOutcome): Promise<void> {
     });
     const paidBody = (await paidResponse.json()) as unknown;
     if (!paidResponse.ok) {
-      throw new Error(`paid guard review failed with HTTP ${paidResponse.status}`);
+      throw new Error(
+        `paid guard review failed with HTTP ${paidResponse.status}`,
+      );
     }
     const settlement = httpPayer.getPaymentSettleResponse((name) =>
       paidResponse.headers.get(name),
@@ -731,13 +746,17 @@ export async function runLiveFlow(outcome: LiveFlowOutcome): Promise<void> {
       throw new Error("guard response ScheduleID does not match the proposal");
     }
     if (reviewResponse.mandateDigest !== digest) {
-      throw new Error("guard response mandate digest does not match the mandate");
+      throw new Error(
+        "guard response mandate digest does not match the mandate",
+      );
     }
 
     console.log("\n[7/7] Independent outcome evidence");
     if (outcome === "approved") {
       if (reviewResponse.outcome !== "approved") {
-        throw new Error(`allowed transfer was refused: ${reviewResponse.reason}`);
+        throw new Error(
+          `allowed transfer was refused: ${reviewResponse.reason}`,
+        );
       }
       if (
         reviewResponse.recipientAccountId !== operatorAccountId.toString() ||
@@ -758,20 +777,28 @@ export async function runLiveFlow(outcome: LiveFlowOutcome): Promise<void> {
       );
       const delta = treasuryBefore - treasuryAfter;
       if (delta !== BigInt(TRANSFER_TINYBARS)) {
-        throw new Error("treasury balance delta does not equal the approved amount");
+        throw new Error(
+          "treasury balance delta does not equal the approved amount",
+        );
       }
       console.log(`  Schedule evidence: ${scheduleUrl}`);
       console.log(`  Treasury before: ${treasuryBefore.toString()} tinybars`);
       console.log(`  Treasury after:  ${treasuryAfter.toString()} tinybars`);
       console.log(`  Balance delta:   ${delta.toString()} tinybars`);
-      console.log(`  Account evidence: ${accountMirrorNodeUrl(treasuryAccountId)}`);
+      console.log(
+        `  Account evidence: ${accountMirrorNodeUrl(treasuryAccountId)}`,
+      );
       console.log(`  Verdict evidence: ${reviewResponse.mirrorNodeUrl}`);
     } else {
       if (reviewResponse.outcome !== "refused") {
         throw new Error("out-of-policy recipient received guard approval");
       }
-      if (reviewResponse.reason !== "recipient is outside the mandate allowlist") {
-        throw new Error(`guard refused for an unexpected reason: ${reviewResponse.reason}`);
+      if (
+        reviewResponse.reason !== "recipient is outside the mandate allowlist"
+      ) {
+        throw new Error(
+          `guard refused for an unexpected reason: ${reviewResponse.reason}`,
+        );
       }
       console.log(`  Review outcome: REFUSED: ${reviewResponse.reason}`);
       console.log("  Guard signature: not submitted");
@@ -788,10 +815,48 @@ export async function runLiveFlow(outcome: LiveFlowOutcome): Promise<void> {
       console.log(`  Schedule evidence: ${scheduleUrl}`);
       console.log(`  Treasury before: ${treasuryBefore.toString()} tinybars`);
       console.log(`  Treasury after:  ${treasuryAfter.toString()} tinybars`);
-      console.log(`  Account evidence: ${accountMirrorNodeUrl(treasuryAccountId)}`);
+      console.log(
+        `  Account evidence: ${accountMirrorNodeUrl(treasuryAccountId)}`,
+      );
       console.log(`  Verdict evidence: ${reviewResponse.mirrorNodeUrl}`);
     }
 
+    // Record the run as an evidence event. These are operator-run reliability
+    // exercises, never users, so origin is always operator.
+    const eventDirectory = resolve("var", "evidence-events");
+    mkdirSync(eventDirectory, { recursive: true });
+    writeFileSync(
+      resolve(eventDirectory, `${scheduleId.toString()}.json`),
+      `${JSON.stringify(
+        {
+          kind: "review",
+          guardPublicKeyPrefix: guardPrivateKey.publicKey.toStringRaw(),
+          origin: "operator",
+          scheduleId: scheduleId.toString(),
+          outcome: reviewResponse.outcome,
+          decidingInvariant:
+            reviewResponse.outcome === "approved"
+              ? "every protected field matched the owner-signed mandate"
+              : reviewResponse.reason,
+          mandateDigest: digest,
+          mandatePolicy: {
+            asset: { kind: "hbar" },
+            recipientAllowlist: envelope.mandate.recipientAllowlist,
+            maxAmountTinybars: envelope.mandate.maxAmountTinybars,
+            validFromEpochSeconds: envelope.mandate.validFromEpochSeconds,
+            expiresAtEpochSeconds: envelope.mandate.expiresAtEpochSeconds,
+          },
+          settlementId: settlement.transaction,
+          settlementAmountTinybars: REVIEW_PRICE_TINYBARS,
+          paymentPayerAccountId: paymentPayerAccountId.toString(),
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    console.log(
+      `  Evidence event: ${resolve(eventDirectory, `${scheduleId.toString()}.json`)}`,
+    );
   } catch (error) {
     primaryFailure = { error };
   } finally {
@@ -799,11 +864,17 @@ export async function runLiveFlow(outcome: LiveFlowOutcome): Promise<void> {
       try {
         await close(server);
       } catch (error) {
-        recordCleanupFailure(cleanupFailures, "guard server close failed", error);
+        recordCleanupFailure(
+          cleanupFailures,
+          "guard server close failed",
+          error,
+        );
       }
     }
     if (temporaryAccounts.length > 0) {
-      console.log("\nCleanup: return temporary account balances to the operator");
+      console.log(
+        "\nCleanup: return temporary account balances to the operator",
+      );
     }
     for (const account of temporaryAccounts) {
       try {
@@ -835,7 +906,11 @@ export async function runLiveFlow(outcome: LiveFlowOutcome): Promise<void> {
     try {
       operatorClient.close();
     } catch (error) {
-      recordCleanupFailure(cleanupFailures, "operator client close failed", error);
+      recordCleanupFailure(
+        cleanupFailures,
+        "operator client close failed",
+        error,
+      );
     }
   }
 

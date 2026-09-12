@@ -1,6 +1,57 @@
 {
   "schemaVersion": "1",
-  "records": [],
+  "records": [
+    {
+      "kind": "review",
+      "guardPublicKeyPrefix": "d6cbb7e7d30eb47a2052fc62e946e77ecd3207a1afd7f4706eb8a825c467ddea",
+      "origin": "operator",
+      "scheduleId": "0.0.10499731",
+      "outcome": "approved",
+      "decidingInvariant": "every protected field matched the owner-signed mandate",
+      "mandateDigest": "eef62ab036becfb3ad0910cc95a8951d82eedde32b150538833748119397648a",
+      "mandatePolicy": {
+        "asset": {
+          "kind": "hbar"
+        },
+        "recipientAllowlist": [
+          "0.0.10499022"
+        ],
+        "maxAmountTinybars": "50000000",
+        "validFromEpochSeconds": "1789212072",
+        "expiresAtEpochSeconds": "1789215732"
+      },
+      "settlementId": "0.0.7162784@1789212138.066299970",
+      "settlementAmountTinybars": "1000000",
+      "paymentPayerAccountId": "0.0.10499726",
+      "mirrorNodeUrl": "https://testnet.mirrornode.hedera.com/api/v1/schedules/0.0.10499731",
+      "paymentPayerMirrorNodeUrl": "https://testnet.mirrornode.hedera.com/api/v1/accounts/0.0.10499726"
+    },
+    {
+      "kind": "review",
+      "guardPublicKeyPrefix": "2c97e079c90484fcde89ce617eee0ccc5c8f84936b97aef62f68c1a0d07fd2d4",
+      "origin": "operator",
+      "scheduleId": "0.0.10499755",
+      "outcome": "refused",
+      "decidingInvariant": "recipient is outside the mandate allowlist",
+      "mandateDigest": "8277732505ae60a26bb6729842c563e945ee525d3413c14bc013412da89e102f",
+      "mandatePolicy": {
+        "asset": {
+          "kind": "hbar"
+        },
+        "recipientAllowlist": [
+          "0.0.10499022"
+        ],
+        "maxAmountTinybars": "50000000",
+        "validFromEpochSeconds": "1789212117",
+        "expiresAtEpochSeconds": "1789215777"
+      },
+      "settlementId": "0.0.7162784@1789212178.512467549",
+      "settlementAmountTinybars": "1000000",
+      "paymentPayerAccountId": "0.0.10499754",
+      "mirrorNodeUrl": "https://testnet.mirrornode.hedera.com/api/v1/schedules/0.0.10499755",
+      "paymentPayerMirrorNodeUrl": "https://testnet.mirrornode.hedera.com/api/v1/accounts/0.0.10499754"
+    }
+  ],
   "setupTransactions": [],
   "counts": {
     "external": {
@@ -10,9 +61,9 @@
       "distinctPayerAccountCount": 0
     },
     "operator": {
-      "reviewCount": 0,
-      "approvalCount": 0,
-      "refusalCount": 0
+      "reviewCount": 2,
+      "approvalCount": 1,
+      "refusalCount": 1
     }
   }
 }

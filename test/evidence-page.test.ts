@@ -12,7 +12,7 @@ import {
 
 interface EvidenceFile {
   readonly schemaVersion: "1";
-  readonly records: readonly unknown[];
+  readonly records: readonly { readonly origin: string }[];
   readonly setupTransactions: readonly unknown[];
   readonly counts: {
     readonly external: {
@@ -37,25 +37,22 @@ const evidence = JSON.parse(
   await readFile(new URL("../web/evidence.json", import.meta.url), "utf8"),
 ) as EvidenceFile;
 
-test("the checked-in empty state says that no reviews are recorded", () => {
-  assert.deepEqual(evidence, {
-    schemaVersion: "1",
-    records: [],
-    setupTransactions: [],
-    counts: {
-      external: {
-        reviewCount: 0,
-        approvalCount: 0,
-        refusalCount: 0,
-        distinctPayerAccountCount: 0,
-      },
-      operator: {
-        reviewCount: 0,
-        approvalCount: 0,
-        refusalCount: 0,
-      },
-    },
+test("INVARIANT: the checked-in manifest claims no external usage", () => {
+  assert.equal(evidence.schemaVersion, "1");
+  assert.ok(evidence.records.length > 0, "live runs must be recorded");
+  // Every recorded review is an operator-run reliability exercise. Nothing here may be
+  // presented as external adoption, so the external counters must stay at zero and no
+  // record may carry an external origin.
+  assert.deepEqual(evidence.counts.external, {
+    reviewCount: 0,
+    approvalCount: 0,
+    refusalCount: 0,
+    distinctPayerAccountCount: 0,
   });
+  for (const record of evidence.records) {
+    assert.equal(record.origin, "operator");
+  }
+  assert.equal(evidence.counts.operator.reviewCount, evidence.records.length);
   assert.match(
     pageSource,
     /<p id="empty-state" class="empty" hidden>No reviews recorded yet\.<\/p>/,
@@ -109,14 +106,21 @@ test("operator and external counts have separate data paths", () => {
 
 test("INVARIANT: pending evidence must make no absence claim", async () => {
   const { promise, resolve } = Promise.withResolvers<Response>();
-  const page = await executePage("evidence", manifestWithRecords(), () => promise);
+  const page = await executePage(
+    "evidence",
+    manifestWithRecords(),
+    () => promise,
+  );
   assert.doesNotMatch(
     page.element("#operator-list").textContent,
     /Refusal verified|Absent from|executed_timestamp is null/,
   );
   resolve(Response.json(mirrorSchedule));
   await page.done;
-  assert.match(page.element("#operator-list").textContent, /Refusal verified by absence/);
+  assert.match(
+    page.element("#operator-list").textContent,
+    /Refusal verified by absence/,
+  );
 });
 
 for (const [name, patch] of [
@@ -130,7 +134,12 @@ for (const [name, patch] of [
   ["URL fragment", { mirrorNodeUrl: `${reviewRecord.mirrorNodeUrl}#schedule` }],
   [
     "URL credentials",
-    { mirrorNodeUrl: reviewRecord.mirrorNodeUrl.replace("https://", "https://user@") },
+    {
+      mirrorNodeUrl: reviewRecord.mirrorNodeUrl.replace(
+        "https://",
+        "https://user@",
+      ),
+    },
   ],
   [
     "noncanonical schedule ID",
@@ -147,7 +156,9 @@ for (const [name, patch] of [
   test(`INVARIANT: ${name} must never establish evidence provenance`, async () => {
     const page = await executePage(
       "evidence",
-      manifestWithRecords([{ ...reviewRecord, ...patch }] as typeof reviewRecord[]),
+      manifestWithRecords([
+        { ...reviewRecord, ...patch },
+      ] as (typeof reviewRecord)[]),
       async () => Response.json(mirrorSchedule),
     );
     await page.done;
@@ -173,7 +184,10 @@ for (const [name, patch] of [
       async () => Response.json({ ...mirrorSchedule, ...patch }),
     );
     await page.done;
-    assert.match(page.element("#operator-list").textContent, /Could not verify/);
+    assert.match(
+      page.element("#operator-list").textContent,
+      /Could not verify/,
+    );
     assert.doesNotMatch(
       page.element("#operator-list").textContent,
       /Refusal verified|Absent from/,
@@ -189,7 +203,10 @@ for (const status of [404, 429, 500, 503]) {
       async () => new Response(null, { status }),
     );
     await page.done;
-    assert.match(page.element("#operator-list").textContent, /Could not verify/);
+    assert.match(
+      page.element("#operator-list").textContent,
+      /Could not verify/,
+    );
     assert.doesNotMatch(
       page.element("#operator-list").textContent,
       /Refusal verified|Absent from/,
@@ -198,20 +215,31 @@ for (const status of [404, 429, 500, 503]) {
 }
 
 test("INVARIANT: rejected requests must not establish evidence absence", async () => {
-  const page = await executePage("evidence", manifestWithRecords(), async () => {
-    throw new Error("request failed");
-  });
+  const page = await executePage(
+    "evidence",
+    manifestWithRecords(),
+    async () => {
+      throw new Error("request failed");
+    },
+  );
   await page.done;
   assert.match(page.element("#operator-list").textContent, /Could not verify/);
-  assert.doesNotMatch(page.element("#operator-list").textContent, /Refusal verified/);
+  assert.doesNotMatch(
+    page.element("#operator-list").textContent,
+    /Refusal verified/,
+  );
 });
 
 test("INVARIANT: contradictory evidence must override the recorded refusal", async () => {
-  const page = await executePage("evidence", manifestWithRecords(), async () => Response.json({
-    ...mirrorSchedule,
-    executed_timestamp: "1788509000.000000001",
-    signatures: [{ public_key_prefix: mirrorPrefix(reviewRecord.guardPublicKeyPrefix) }],
-  }));
+  const page = await executePage("evidence", manifestWithRecords(), async () =>
+    Response.json({
+      ...mirrorSchedule,
+      executed_timestamp: "1788509000.000000001",
+      signatures: [
+        { public_key_prefix: mirrorPrefix(reviewRecord.guardPublicKeyPrefix) },
+      ],
+    }),
+  );
   await page.done;
   const text = page.element("#operator-list").textContent;
   assert.match(text, /Present in signatures/);
@@ -227,13 +255,21 @@ test("INVARIANT: evidence records must interpret signatures with their own guard
     guardPublicKeyPrefix: "cccccccccccccccc",
   };
   const records = [reviewRecord, second];
-  const page = await executePage("evidence", manifestWithRecords(records), async (url) => {
-    const record = records.find((candidate) => candidate.mirrorNodeUrl === url)!;
-    return Response.json({
-      ...mirrorSchedule,
-      signatures: [{ public_key_prefix: mirrorPrefix(record.guardPublicKeyPrefix) }],
-    });
-  });
+  const page = await executePage(
+    "evidence",
+    manifestWithRecords(records),
+    async (url) => {
+      const record = records.find(
+        (candidate) => candidate.mirrorNodeUrl === url,
+      )!;
+      return Response.json({
+        ...mirrorSchedule,
+        signatures: [
+          { public_key_prefix: mirrorPrefix(record.guardPublicKeyPrefix) },
+        ],
+      });
+    },
+  );
   await page.done;
   assert.equal(page.element("#operator-list").children.length, 2);
   for (const item of page.element("#operator-list").children) {

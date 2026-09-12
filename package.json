@@ -9,6 +9,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "build-evidence": "node --experimental-strip-types scripts/build-evidence.ts",
     "demo": "node --env-file-if-exists=.env --experimental-strip-types scripts/demo.ts",
     "refusal": "node --env-file-if-exists=.env --experimental-strip-types scripts/refusal.ts",
     "spike": "node --env-file-if-exists=.env --experimental-strip-types scripts/spike-nested-key.ts",

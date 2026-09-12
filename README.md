@@ -13,6 +13,31 @@ The testnet treasury uses this authorization tree:
 
 The owner can recover funds directly. The agent can publish a scheduled transfer, but the nested branch remains incomplete until the guard independently resolves that ScheduleID and approves every invariant. Hedera executes the schedule only after the authorization tree is satisfied.
 
+## Live evidence
+
+Countersign ran end to end on Hedera testnet on 2026-09-12. Every link below is served by
+the public mirror node, so each claim is checkable without running this code. The refusal
+is provable by absence: the schedule exists, the guard's key prefix is missing from
+`signatures[]`, and `executed_timestamp` is null.
+
+| | Guard approved | Guard refused |
+| --- | --- | --- |
+| Schedule | [`0.0.10499731`](https://testnet.mirrornode.hedera.com/api/v1/schedules/0.0.10499731) | [`0.0.10499755`](https://testnet.mirrornode.hedera.com/api/v1/schedules/0.0.10499755) |
+| `executed_timestamp` | `1789212148.179991105` | `null` |
+| Signer prefixes | agent **and** guard | agent only |
+| Treasury delta | exactly the mandated `25000000` tinybars | unchanged |
+| x402 settlement | [`0.0.7162784@1789212138.066299970`](https://testnet.mirrornode.hedera.com/api/v1/transactions/0.0.7162784-1789212138-066299970) | [`0.0.7162784@1789212178.512467549`](https://testnet.mirrornode.hedera.com/api/v1/transactions/0.0.7162784-1789212178-512467549) |
+| HCS verdict | [topic `0.0.10499735`](https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10499735/messages/1) | [topic `0.0.10499757`](https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10499757/messages/1) |
+
+The caller pays the same review price either way — a refusal is a delivered service, not a
+failed request. Both settlements were completed by the Blocky402 facilitator on
+`hedera:testnet`.
+
+These are **operator-run reliability exercises, not users**, and testnet payments are
+**paid protocol trials, not revenue**. `web/evidence.json` is generated from the runs by
+`npm run build-evidence`, labels every record `operator`, and reports zero external
+reviews and zero distinct external payer accounts.
+
 ## Current scope
 
 Treasury schedules remain HBAR-only. The hosted `POST /review` boundary charges one

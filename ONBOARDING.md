@@ -3,10 +3,19 @@
 This is a Hedera **testnet-only** walkthrough. It creates real testnet accounts,
 submits real testnet transactions, and pays testnet fees. It does not support mainnet.
 
-> **Live-status disclosure:** these steps have not yet been executed end to end against
-> Hedera testnet. This repository has no Hedera credentials, and nothing in it has ever
-> been run against the live network. The expected output below is taken from the checked-in
-> scripts and tests, not from a completed live run.
+> **Live-status disclosure:** these steps were executed end to end against Hedera testnet
+> on 2026-09-12. `npm run spike`, `npm run demo` and `npm run refusal` all completed, and
+> every outcome below is checkable on the mirror node without running this code:
+>
+> | Run | ScheduleID | Mirror-node evidence |
+> | --- | --- | --- |
+> | Guard approved, schedule executed | `0.0.10499731` | [schedules/0.0.10499731](https://testnet.mirrornode.hedera.com/api/v1/schedules/0.0.10499731) — `executed_timestamp` set, two signer prefixes |
+> | Guard refused, schedule never executed | `0.0.10499755` | [schedules/0.0.10499755](https://testnet.mirrornode.hedera.com/api/v1/schedules/0.0.10499755) — `executed_timestamp` null, guard prefix absent |
+>
+> Both reviews were paid for over x402 and settled by the Blocky402 facilitator, and both
+> verdicts were written to HCS. These are **operator-run reliability exercises, not users**,
+> and testnet payments are **paid protocol trials, not revenue**; `web/evidence.json`
+> labels them `operator` and reports zero external reviews.
 
 The fastest path to a first paid review is the narrated `demo` script. It provisions the
 keys and accounts, signs the mandate, starts the guard, pays the x402 challenge, requests
