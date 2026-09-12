@@ -13,8 +13,10 @@
     "demo": "node --env-file-if-exists=.env --experimental-strip-types scripts/demo.ts",
     "hosted-review": "node --env-file-if-exists=var/hosted-caller.env --experimental-strip-types scripts/hosted-review.ts",
     "provision-hosted": "node --env-file-if-exists=.env --experimental-strip-types scripts/provision-hosted.ts",
+    "provision-sandbox": "node --env-file-if-exists=.env --experimental-strip-types scripts/provision-sandbox.ts",
     "refusal": "node --env-file-if-exists=.env --experimental-strip-types scripts/refusal.ts",
     "serve-guard": "node --env-file-if-exists=var/hosted-guard.env --experimental-strip-types scripts/serve-guard.ts",
+    "sign-sandbox-mandates": "node --env-file-if-exists=var/sandbox.env --env-file-if-exists=var/sandbox-owner.env --experimental-strip-types scripts/sign-sandbox-mandates.ts",
     "spike": "node --env-file-if-exists=.env --experimental-strip-types scripts/spike-nested-key.ts",
     "test": "node --test --test-concurrency=1 --experimental-strip-types test/**/*.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
