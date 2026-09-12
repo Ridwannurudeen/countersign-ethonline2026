@@ -40,10 +40,16 @@ the treasury balance is unchanged. Every verdict is also written to a Hedera Con
 Service topic. All of it is readable from the public mirror node without running any of my
 code.
 
+The guard is live at https://countersign.gudman.xyz. `GET /guard` returns its public key
+and HCS-14 identifier for free, so a caller can identify the service before paying it, and
+`POST /review` is the paid endpoint. The approved and refused runs above were made from a
+separate machine against that endpoint.
+
 Honest limits, also stated in the README: these are my own operator runs, not external
-users, and testnet payments are paid protocol trials, not revenue. There is no public
-endpoint — the guard is a service a treasury owner runs. HTS token approval is deliberately
-disabled, and every token proposal is refused.
+users, and testnet payments are paid protocol trials, not revenue. One guard process
+authorizes exactly one treasury, so this is not a marketplace — a second treasury needs a
+second guard. HTS token approval is deliberately disabled, and every token proposal is
+refused.
 
 ## How it's made
 
@@ -89,7 +95,7 @@ the repository.
 ## Links
 
 - **GitHub:** https://github.com/Ridwannurudeen/countersign-ethonline2026
-- **Demonstration:** https://github.com/Ridwannurudeen/countersign-ethonline2026#live-evidence
+- **Demonstration:** https://countersign.gudman.xyz/guard (the live guard's identity endpoint)
 - **Video:** pending recording
 
 ## Prize selection
