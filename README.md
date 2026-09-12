@@ -40,12 +40,20 @@ reviews and zero distinct external payer accounts.
 
 ## Current scope
 
-Treasury schedules remain HBAR-only. The hosted `POST /review` boundary charges one
+Treasury schedules remain HBAR-only. The `POST /review` boundary charges one
 configured HBAR check-unit through x402 on Hedera testnet before resolving consensus
 state. Production verifies that the configured single-key payment destination is
 separate from the treasury, expected agent, guard operator, and their authorization
 keys. The narrated flow also pays from a separately keyed account, so none of the
 treasury authorization keys enters its decoded x402 payload.
+
+**There is no public endpoint.** The guard is a service the treasury owner runs, and
+`npm run demo` starts it on `127.0.0.1` for the duration of a run. One guard process
+authorizes exactly one treasury: the owner, agent and guard keys, the treasury account and
+the expected agent account are all fixed in its configuration and checked against consensus
+at startup. It is not a multi-tenant service, and nothing in this repository was deployed to
+a public host. What is live is the evidence — every payment, verdict and schedule above was
+settled on Hedera testnet and is readable from the public mirror node.
 
 The guard requires all of the following:
 
@@ -178,7 +186,7 @@ The command creates fresh owner, agent, guard, and payment-payer keys plus treas
 agent, guard, and payment-payer accounts; prints the owner-signed mandate; publishes an in-policy schedule; and waits
 for the mirror node to show it unexecuted with only the agent signature. It then
 shows the HTTP 402 challenge and exact HBAR price, pays through the live x402
-facilitator, and sends the paid request to the production guard. The output lists
+facilitator, and sends the paid request to the guard. The output lists
 the consensus fields evaluated by `reviewSchedule`, then prints guard-approval status,
 the execution timestamp, mirror evidence with signer key prefixes, the exact treasury
 balance delta, the HCS verdict link, and schedule and account evidence links.
