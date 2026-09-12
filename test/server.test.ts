@@ -65,10 +65,10 @@ const mandate: Mandate = {
 
 const digest = mandateDigest(mandate);
 
-function signedMandateEnvelope(value: Mandate = mandate) {
+function signedMandateEnvelope(value: Mandate = mandate, signer = ownerKey) {
   return {
     mandate: value,
-    signature: Buffer.from(ownerKey.sign(canonicalMandateBytes(value))).toString(
+    signature: Buffer.from(signer.sign(canonicalMandateBytes(value))).toString(
       "base64url",
     ),
   };
@@ -233,6 +233,86 @@ function harness(
   return { dependencies, events, verdicts, completions };
 }
 
+function twoTenantHarness(t: TestContext) {
+  const tenants = [
+    { mandate, ownerKey, agentPrivateKey, expectedAgentAccountId: "0.0.2001" },
+    {
+      mandate: { ...mandate, tenantId: "treasury-2", treasuryAccountId: "0.0.1003" },
+      ownerKey: PrivateKey.generateED25519(),
+      agentPrivateKey: PrivateKey.generateED25519(),
+      expectedAgentAccountId: "0.0.2002",
+    },
+  ];
+  const directory = mkdtempSync(resolve("var", "two-tenant-"));
+  const databasePath = resolve(directory, "replay.sqlite");
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  initializeReplayStore(databasePath);
+  const schedules = new Map<string, ReviewableScheduleInfo>();
+  const state = harness({
+    tenants: new Map(tenants.map((tenant) => [tenant.mandate.tenantId, {
+      ownerPublicKey: tenant.ownerKey.publicKey,
+      agentPublicKey: tenant.agentPrivateKey.publicKey,
+      expectedAgentAccountId: tenant.expectedAgentAccountId,
+      treasuryAccountId: tenant.mandate.treasuryAccountId,
+      agentIdentifier: `uaid:aid:agent;nativeId=hedera:testnet:${tenant.expectedAgentAccountId}`,
+    }])),
+    async resolveSchedule(scheduleId) {
+      const info = schedules.get(scheduleId);
+      assert.ok(info, "the requested schedule must be registered in the harness");
+      return resolvedSchedule(info);
+    },
+    lookupCompletedReview: (value) => getCompletedMandateReview(databasePath, value),
+    lookupReviewState: (value) => getMandateReviewState(databasePath, value),
+    reserveNonce: (value) => reserveMandateReview(databasePath, value),
+    completeNonce: (value, completion) => completeMandateReview(databasePath, value, completion),
+  });
+  const guardSign = t.mock.method(guardPrivateKey, "sign");
+  const scheduleApproval = t.mock.method(state.dependencies, "submitScheduleApproval");
+
+  async function prepareRequest(path: string, value: Mandate, debitAccountId = value.treasuryAccountId) {
+    const tenant = tenants.find((entry) => entry.mandate.tenantId === value.tenantId);
+    assert.ok(tenant);
+    const mandateEnvelope = signedMandateEnvelope(value, tenant.ownerKey);
+    if (path === "/countersign") {
+      const transaction = await new TransferTransaction()
+        .setTransactionId(TransactionId.fromString(`${tenant.expectedAgentAccountId}@1788509000.000000000`))
+        .setNodeAccountIds([AccountId.fromString("0.0.3")])
+        .setMaxTransactionFee(Hbar.fromTinybars("100000000"))
+        .addHbarTransfer(debitAccountId, Hbar.fromTinybars(-25000000))
+        .addHbarTransfer("0.0.1002", Hbar.fromTinybars(25000000))
+        .freeze().sign(tenant.agentPrivateKey);
+      return {
+        tenantId: value.tenantId,
+        mandateEnvelope,
+        transactionBase64: Buffer.from(transaction.toBytes()).toString("base64"),
+      };
+    }
+    const scheduleId = `0.0.${7001 + schedules.size}`;
+    const valueDigest = mandateDigest(value);
+    schedules.set(scheduleId, schedule({
+      scheduleId: { toString: () => scheduleId },
+      creatorAccountId: { toString: () => tenant.expectedAgentAccountId },
+      payerAccountId: { toString: () => tenant.expectedAgentAccountId },
+      signers: new KeyList([tenant.agentPrivateKey.publicKey]),
+      scheduleMemo: valueDigest,
+      schedulableTransactionBody: {
+        ...schedule().schedulableTransactionBody,
+        memo: valueDigest,
+        cryptoTransfer: {
+          transfers: { accountAmounts: [
+            adjustment(debitAccountId.split(".")[2], "-25000000"),
+            adjustment("1002", "25000000"),
+          ] },
+          tokenTransfers: [],
+        },
+      },
+    }));
+    return { tenantId: value.tenantId, mandateEnvelope, scheduleId };
+  }
+
+  return { ...state, tenants, databasePath, guardSign, scheduleApproval, prepareRequest };
+}
+
 async function postReview(
   dependencies: ReviewServerDependencies,
   body: unknown,
@@ -285,7 +365,7 @@ test("POST /review rejects a tenant binding mismatch before payment", async () =
   assert.deepEqual(state.events, []);
 });
 
-test("INVARIANT: a mandate issued for one tenant must never authorize a schedule bound to another tenant", async () => {
+test("POST /review refuses an unregistered mandate tenant before payment", async () => {
   const state = harness();
   const outOfPolicyMandate = {
     ...mandate,
@@ -301,6 +381,69 @@ test("INVARIANT: a mandate issued for one tenant must never authorize a schedule
   assert.match(String(json.error), /mandate tenant is not authorized/);
   assert.deepEqual(state.events, []);
 });
+
+for (const path of ["/review", "/countersign"]) {
+  for (const index of [0, 1]) {
+    for (const crossing of ["foreign debit", "foreign mandate treasury"]) {
+      test(`INVARIANT: two registered tenants ${path} refuses tenant ${index + 1} ${crossing} without guard approval`, async (t) => {
+        const state = twoTenantHarness(t);
+        const tenant = state.tenants[index];
+        const other = state.tenants[1 - index];
+        const value = crossing === "foreign mandate treasury"
+          ? { ...tenant.mandate, treasuryAccountId: other.mandate.treasuryAccountId }
+          : tenant.mandate;
+        const body = await state.prepareRequest(path, value, other.mandate.treasuryAccountId);
+        const { response, json } = await postReview(state.dependencies, body, {}, path);
+
+        assert.equal(response.status, 200);
+        assert.equal(json.outcome, "refused");
+        assert.match(String(json.reason ?? json.invariant), crossing === "foreign mandate treasury"
+          ? /mandate treasury/
+          : path === "/review" ? /required treasury debit/ : /only the treasury is debited/);
+        assert.equal(json.transactionBase64, undefined);
+        assert.equal(state.guardSign.mock.callCount(), 0);
+        assert.equal(state.scheduleApproval.mock.callCount(), 0);
+        assert.deepEqual(state.verdicts.map((record) => [record.tenantId, record.outcome]), [
+          [tenant.mandate.tenantId, "refused"],
+        ]);
+      });
+    }
+  }
+}
+
+for (const firstPath of ["/review", "/countersign"]) {
+  for (const secondPath of ["/review", "/countersign"]) {
+    test(`INVARIANT: two registered tenants can each spend the same nonce via ${firstPath} then ${secondPath}`, async (t) => {
+      const state = twoTenantHarness(t);
+      const [tenantA, tenantB] = state.tenants;
+      assert.equal(tenantA.mandate.nonce, tenantB.mandate.nonce);
+      const first = await postReview(state.dependencies, await state.prepareRequest(firstPath, tenantA.mandate), {}, firstPath);
+      assert.equal(first.response.status, 200);
+      assert.equal(first.json.outcome, "approved");
+      const second = await postReview(state.dependencies, await state.prepareRequest(secondPath, tenantB.mandate), {}, secondPath);
+      assert.equal(second.response.status, 200);
+      assert.equal(second.json.outcome, "approved");
+      assert.deepEqual(state.verdicts.map((record) => [record.tenantId, record.outcome]), [
+        [tenantA.mandate.tenantId, "approved"],
+        [tenantB.mandate.tenantId, "approved"],
+      ]);
+      const paths = [firstPath, secondPath];
+      assert.equal(state.guardSign.mock.callCount(), paths.filter((path) => path === "/countersign").length);
+      assert.equal(state.scheduleApproval.mock.callCount(), paths.filter((path) => path === "/review").length);
+      const database = new DatabaseSync(state.databasePath, { readOnly: true });
+      try {
+        assert.deepEqual(database.prepare(
+          "SELECT tenant_id, nonce, outcome FROM mandate_reviews ORDER BY tenant_id",
+        ).all().map((row) => [row.tenant_id, row.nonce, row.outcome]), [
+          [tenantA.mandate.tenantId, tenantA.mandate.nonce, "approved"],
+          [tenantB.mandate.tenantId, tenantB.mandate.nonce, "approved"],
+        ]);
+      } finally {
+        database.close();
+      }
+    });
+  }
+}
 
 test("POST /review rejects a non-canonical ScheduleID before payment", async () => {
   const state = harness();

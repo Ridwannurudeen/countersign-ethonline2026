@@ -251,6 +251,29 @@ test("reviewSchedule refuses a payer other than the expected agent", () => {
   );
 });
 
+test("reviewSchedule refuses the treasury as the configured agent and scheduled fee payer", () => {
+  const checks: ReviewCheck[] = [];
+  const outcome = reviewSchedule(
+    schedule({
+      creatorAccountId: { toString: () => mandate.treasuryAccountId },
+      payerAccountId: { toString: () => mandate.treasuryAccountId },
+    }),
+    mandate,
+    { ...baseContext, expectedAgentAccountId: mandate.treasuryAccountId },
+    (check) => checks.push(check),
+  );
+
+  assert.deepEqual(outcome, {
+    approved: false,
+    reason: "scheduled network fee must not be paid by the treasury",
+  });
+  assert.deepEqual(checks.at(-1), {
+    invariant: "scheduled network fee is not paid by the treasury",
+    passed: false,
+  });
+  assert.equal(checks.slice(0, -1).every((check) => check.passed), true);
+});
+
 test("reviewSchedule refuses a mandate for a different treasury", () => {
   assertRefusal(schedule(), /mandate treasury/, {
     ...baseContext,

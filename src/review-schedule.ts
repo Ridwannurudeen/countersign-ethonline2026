@@ -287,6 +287,12 @@ export function reviewSchedule(
   );
   if (denialCase !== false) return denialCase;
   denialCase = check(
+    "scheduled network fee is not paid by the treasury",
+    context.expectedAgentAccountId !== context.treasuryAccountId,
+    "scheduled network fee must not be paid by the treasury",
+  );
+  if (denialCase !== false) return denialCase;
+  denialCase = check(
     "mandate treasury matches the configured treasury account",
     mandate.treasuryAccountId === context.treasuryAccountId,
     "mandate treasury does not match the configured treasury account",
