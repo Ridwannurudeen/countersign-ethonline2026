@@ -207,32 +207,38 @@ test("withholds approved bytes when guard payment settlement failed", async (t) 
   await assert.rejects(signer().createPartiallySignedTransferTransaction(requirements), /settlement failed/);
 });
 
-test("accepts the unchanged guard core's approval when the quoted fee payer is the treasury", async (t) => {
+// Under x402 the facilitator pays the network fee, so a quote naming the treasury as fee
+// payer would drain the treasury outside the mandated transfer. The guard must refuse it.
+test("refuses a quote that makes the treasury pay the network fee", async (t) => {
   serveGuard(t, async (bytes) => {
     const approval = await validateCountersignTransfer(bytes, envelope, {
       expectedAgentAccountId: "0.0.2001", treasuryAccountId: treasury,
       ownerPublicKey: owner.publicKey, agentPublicKey: agent.publicKey, guardPublicKey: guard.publicKey,
       nowEpochSeconds: Math.floor(Date.now() / 1000).toString(), protocolMaxFeeTinybars: "100000000",
     });
-    assert.ok(approval.approved, JSON.stringify(approval));
-    return { outcome: "approved", transactionBase64: countersignTransfer(approval, guard) };
+    assert.equal(approval.approved, false, JSON.stringify(approval));
+    assert.ok(!approval.approved);
+    return { outcome: "refused", invariant: approval.invariant };
   });
-  await signer().createPartiallySignedTransferTransaction({ ...requirements, extra: { feePayer: treasury } });
+  await assert.rejects(
+    signer().createPartiallySignedTransferTransaction({ ...requirements, extra: { feePayer: treasury } }),
+    /network fee is not paid by the treasury/,
+  );
 });
 
-test("surfaces the current guard's treasury transaction-ID policy for a distinct stock fee payer", async (t) => {
+// The ordinary x402 case: a stock facilitator fee payer is exactly what the buyer path uses.
+test("approves a purchase whose network fee is paid by the stock facilitator", async (t) => {
   const http = serveGuard(t, async (bytes) => {
     const outcome = await validateCountersignTransfer(bytes, envelope, {
       expectedAgentAccountId: "0.0.2001", treasuryAccountId: treasury,
       ownerPublicKey: owner.publicKey, agentPublicKey: agent.publicKey, guardPublicKey: guard.publicKey,
       nowEpochSeconds: Math.floor(Date.now() / 1000).toString(), protocolMaxFeeTinybars: "100000000",
     });
-    assert.equal(outcome.approved, false);
-    assert.ok(!outcome.approved);
-    return { outcome: "refused", invariant: outcome.invariant };
+    assert.equal(outcome.approved, true, JSON.stringify(outcome));
+    assert.ok(outcome.approved);
+    return { outcome: "approved", transactionBase64: countersignTransfer(outcome, guard) };
   });
-  await assert.rejects(signer().createPartiallySignedTransferTransaction(requirements),
-    /transaction ID is an ordinary treasury-paid transaction/);
+  await signer().createPartiallySignedTransferTransaction(requirements);
   assert.equal(http.payments.length, 1);
 });
 

@@ -1447,7 +1447,7 @@ async function countersignHarness(t: TestContext) {
   state.dependencies.tenants.get(mandate.tenantId)!.agentIdentifier = generateHcs14Aid(productionTenant.agentIdentity);
   state.dependencies.participantIdentifiers.guard = generateHcs14Aid(productionConfig.guardIdentity);
   const transaction = await new TransferTransaction()
-    .setTransactionId(TransactionId.fromString("0.0.1001@1788509000.000000000"))
+    .setTransactionId(TransactionId.fromString("0.0.4001@1788509000.000000000"))
     .setNodeAccountIds([AccountId.fromString("0.0.3")])
     .setMaxTransactionFee(Hbar.fromTinybars("100000000"))
     .addHbarTransfer("0.0.1001", Hbar.fromTinybars(-100))
@@ -1534,7 +1534,7 @@ test("POST /countersign settles, reserves before the real guard signature, and r
   assert.equal(json.outcome, "approved");
   assert.ok(response.headers.get("payment-response"));
   assert.deepEqual(state.events, ["settle-payment", "reserve", "guard-sign", "record"]);
-  assert.equal(json.transactionId, "0.0.1001@1788509000.000000000");
+  assert.equal(json.transactionId, "0.0.4001@1788509000.000000000");
   assert.equal(json.transactionDigest, state.reservation.transactionDigest);
   assert.equal(json.mandateDigest, digest);
   assert.equal(json.mirrorNodeUrl, "https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.9001/messages/1");
@@ -1572,7 +1572,7 @@ for (const refusal of ["cap", "owner signature", "malformed bytes"] as const) {
     assert.ok(response.headers.get("payment-response"));
     assert.deepEqual(state.events, ["settle-payment", "record"]);
     assert.equal(state.messages[0].invariant, invariant);
-    assert.equal(state.messages[0].transactionId, refusal === "malformed bytes" ? null : "0.0.1001@1788509000.000000000");
+    assert.equal(state.messages[0].transactionId, refusal === "malformed bytes" ? null : "0.0.4001@1788509000.000000000");
     assert.equal(state.messages[0].transactionDigest, createHash("sha256").update(Buffer.from(body.transactionBase64, "base64")).digest("hex"));
     assert.equal(state.messages[0].mandateDigest, mandateDigest(body.mandateEnvelope.mandate));
     assert.equal(state.messages[0].settlementId, json.settlementId);

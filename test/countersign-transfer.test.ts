@@ -56,7 +56,7 @@ function envelope(value: Mandate = mandate) {
 
 async function fixture(key = agent, nodes = ["0.0.3"]) {
   const transaction = new TransferTransaction()
-    .setTransactionId(TransactionId.fromString("0.0.1001@1788509000.000000000"))
+    .setTransactionId(TransactionId.fromString("0.0.4001@1788509000.000000000"))
     .setNodeAccountIds(nodes.map((node) => AccountId.fromString(node)))
     .setMaxTransactionFee(Hbar.fromTinybars(context.protocolMaxFeeTinybars))
     .addHbarTransfer("0.0.1001", Hbar.fromTinybars(-100))
@@ -215,25 +215,28 @@ const bodyCases: [string, (body: proto.TransactionBody) => void, string][] = [
     "transaction is only a TransferTransaction with reviewed fields",
   ],
   [
-    "wrong payer",
+    "treasury pays the network fee",
     (body) => {
-      body.transactionID!.accountID = { ...body.nodeAccountID };
+      // the treasury's own account ID, taken from the debit side of the transfer
+      body.transactionID!.accountID = {
+        ...body.cryptoTransfer!.transfers!.accountAmounts![0]!.accountID,
+      };
     },
-    "transaction ID is an ordinary treasury-paid transaction",
+    "network fee is not paid by the treasury",
   ],
   [
     "scheduled flag",
     (body) => {
       body.transactionID!.scheduled = true;
     },
-    "transaction ID is an ordinary treasury-paid transaction",
+    "transaction ID is a well-formed unscheduled transaction",
   ],
   [
     "nonce",
     (body) => {
       body.transactionID!.nonce = 1;
     },
-    "transaction ID is an ordinary treasury-paid transaction",
+    "transaction ID is a well-formed unscheduled transaction",
   ],
   [
     "unapproved fee",
@@ -519,7 +522,7 @@ test("HTS mandate requires its token and retains custom-fee refusal without Toke
   const transfer = new TransferTransaction()
     .addTokenTransfer("0.0.123", "0.0.1001", -100)
     .addTokenTransfer("0.0.123", "0.0.1002", 100)
-    .setTransactionId(TransactionId.fromString("0.0.1001@1788509000.000000000"))
+    .setTransactionId(TransactionId.fromString("0.0.4001@1788509000.000000000"))
     .setNodeAccountIds([AccountId.fromString("0.0.3")])
     .setMaxTransactionFee(Hbar.fromTinybars(context.protocolMaxFeeTinybars))
     .freeze();
@@ -570,7 +573,7 @@ async function tokenFixture(nodes = ["0.0.3"]) {
   const transaction = new TransferTransaction()
     .addTokenTransfer(tokenId, "0.0.1001", -100)
     .addTokenTransfer(tokenId, "0.0.1002", 100)
-    .setTransactionId(TransactionId.fromString("0.0.1001@1788509000.000000000"))
+    .setTransactionId(TransactionId.fromString("0.0.4001@1788509000.000000000"))
     .setNodeAccountIds(nodes.map((node) => AccountId.fromString(node)))
     .setMaxTransactionFee(Hbar.fromTinybars(context.protocolMaxFeeTinybars))
     .freeze();

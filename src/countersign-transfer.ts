@@ -198,8 +198,12 @@ export async function validateCountersignTransfer(
       );
       nodes.add(node);
       const id = body.transactionID;
+      // The transaction ID account pays the network fee. Under x402 that is the
+      // facilitator, not the treasury, so this must not demand the treasury: it must
+      // forbid it. A treasury-paid fee would move value outside the mandated transfer
+      // list, which is exactly what this guard exists to prevent.
       check(
-        "transaction ID is an ordinary treasury-paid transaction",
+        "transaction ID is a well-formed unscheduled transaction",
         id != null &&
           onlyFields(id, [
             "accountID",
@@ -209,7 +213,11 @@ export async function validateCountersignTransfer(
           ]) &&
           !id.scheduled &&
           (id.nonce == null || id.nonce === 0) &&
-          numericId(id.accountID) === context.treasuryAccountId,
+          numericId(id.accountID) !== null,
+      );
+      check(
+        "network fee is not paid by the treasury",
+        numericId(id.accountID) !== context.treasuryAccountId,
       );
       check(
         "transaction fee equals the fixed protocol value",
