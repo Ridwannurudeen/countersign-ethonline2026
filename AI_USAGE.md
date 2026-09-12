@@ -2,7 +2,7 @@
 
 ## OpenAI Codex
 
-OpenAI Codex (`codex-cli` 0.153.2) authored 100% of the source, tests, and scripts in this repository:
+OpenAI Codex (`codex-cli` 0.153.2) authored the original source, tests, and scripts in this repository:
 
 - Source: every module under `src/`, including the mandate, replay store, schedule
   validator, x402 gate, HCS-14 identity generator, HCS verdict log, and review server.
@@ -11,7 +11,24 @@ OpenAI Codex (`codex-cli` 0.153.2) authored 100% of the source, tests, and scrip
 
 ## Anthropic Claude
 
-Anthropic Claude (Claude Code, Opus 5) acted as briefing, verification, and release engineer. It wrote the task briefs; independently ran the TypeScript typecheck and full test suite; and performed a mutation check by temporarily removing the allowlist and amount-cap invariants and confirming that exactly two tests failed. Claude owns all git-history operations for this repository and authored its commit messages. It did not author source code.
+Anthropic Claude (Claude Code, Opus 5) acted as briefing, verification, and release engineer for
+the work above. It wrote the task briefs; independently ran the TypeScript typecheck and full test
+suite; and performed mutation checks by temporarily removing invariants and confirming that the
+suite failed.
+
+Claude also authored the following directly, during the 2026-09-12 live testnet session, when a
+defect had to be diagnosed and fixed from live network behaviour:
+
+- `decodeMirrorPublicKeyPrefix` in `src/evidence-links.ts`, and the equivalent decoder in
+  `web/evidence.html` and `web/replay.html`.
+- The evidence-event emitter and the signer-prefix output change in `scripts/live-flow.ts`.
+- `scripts/build-evidence.ts` in full.
+- The base64 fixtures, the strict-encoding test, and the two live mirror-node invariants in
+  `test/`, plus the rewrite of two tests that had asserted the empty-manifest placeholder.
+- The live-evidence sections of `README.md` and `ONBOARDING.md`, and the pinned schema versions
+  in `.env.example`.
+
+Claude owns all git-history operations for this repository and authored its commit messages.
 
 ## Design review
 
@@ -23,9 +40,19 @@ All direct dependency versions are exact pins. The paid service uses
 `@hiero-ledger/sdk@2.85.0`, `@x402/core@2.25.0`, and `@x402/hedera@2.25.0` so npm resolves
 one shared SDK instance across the application and the Hedera x402 mechanism.
 
-## Verification limit
+## Live verification
 
-No AI system has verified live Hedera schedule approval, x402 facilitator settlement,
-or HCS topic submission for this repository. The offline suite verifies orchestration
-and wire construction with controlled adapters; credentialed testnet execution remains
-required.
+On 2026-09-12 the full flow was executed against Hedera testnet, and live Hedera schedule
+approval, x402 facilitator settlement, and HCS topic submission were each confirmed on the
+public mirror node independently of this repository's code. The mirror-node links are in
+`README.md`.
+
+That run exposed a defect the offline suite could not have caught: the mirror node returns
+`signatures[].public_key_prefix` as base64, and three code paths required hexadecimal. The
+test fixtures used `"a".repeat(16)`, which is itself valid base64, so they passed while
+asserting nothing about the real encoding. The regression tests added afterwards run against
+verbatim mirror-node responses captured from that run.
+
+All recorded reviews are operator-run reliability exercises, not external usage, and testnet
+payments are paid protocol trials, not revenue. `web/evidence.json` labels them accordingly
+and reports zero external reviews.

@@ -34,7 +34,7 @@ failed request. Both settlements were completed by the Blocky402 facilitator on
 `hedera:testnet`.
 
 These are **operator-run reliability exercises, not users**, and testnet payments are
-**paid protocol trials, not revenue**. `web/evidence.json` is generated from the runs by
+**paid protocol trials, not revenue**. `web/evidence.json` was generated from those runs by
 `npm run build-evidence`, labels every record `operator`, and reports zero external
 reviews and zero distinct external payer accounts.
 
