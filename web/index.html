@@ -458,6 +458,57 @@
         outline-color: var(--panel-green);
       }
 
+      .live-status {
+        block-size: 3lh;
+        overflow-y: auto;
+        overflow-wrap: anywhere;
+        font-family: var(--mono);
+        font-size: 0.78rem;
+        color: var(--muted);
+      }
+
+      .fields .live-value {
+        block-size: 2lh;
+        overflow-y: auto;
+      }
+
+      .fields #ledger-signatures {
+        block-size: 4lh;
+      }
+
+      #guard-identifier {
+        display: block;
+        block-size: 3lh;
+        overflow-y: auto;
+      }
+
+      .run-feed {
+        block-size: 12rem;
+        overflow-y: auto;
+        margin-bottom: 2rem;
+        padding: 0.5rem 1rem 0.5rem 2rem;
+        border-block: 1px solid var(--line);
+        scrollbar-gutter: stable;
+      }
+
+      .run-feed li {
+        max-width: none;
+        padding-block: 0.65rem;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .run-feed a,
+      .run-feed span {
+        display: block;
+        overflow-wrap: anywhere;
+      }
+
+      .run-feed span {
+        font-family: var(--mono);
+        font-size: 0.8rem;
+        color: var(--muted);
+      }
+
       /* ---- tables ---- */
 
       .scroll {
@@ -750,6 +801,44 @@
       }
 
       @media (max-width: 42rem) {
+        .live-status {
+          block-size: 5lh;
+        }
+
+        #guard-identifier {
+          block-size: 9lh;
+        }
+
+        .run-feed {
+          block-size: 18rem;
+        }
+
+        table {
+          min-width: 0;
+          table-layout: fixed;
+        }
+
+        th,
+        td {
+          padding: 0.6rem 0.35rem;
+          overflow-wrap: anywhere;
+        }
+
+        tbody th {
+          width: auto;
+        }
+
+        .tag {
+          max-width: 100%;
+          overflow-wrap: anywhere;
+          padding-inline: 0.2rem;
+        }
+
+        pre {
+          white-space: pre-wrap;
+          overflow-wrap: anywhere;
+        }
+
         .foot-grid,
         .fork,
         .rows > div {
@@ -838,18 +927,19 @@
         </div>
         <figure class="ledger" aria-labelledby="ledger-title">
           <figcaption id="ledger-title">
-            <span class="tag tag-refused">Refused</span>
+            <span class="tag tag-refused">Recorded refusal</span>
             <span>Schedule 0.0.10502603, as the public mirror node reports it</span>
           </figcaption>
           <dl class="fields">
-            <div><dt>executed_timestamp</dt><dd>null</dd></div>
-            <div><dt>deleted</dt><dd>false</dd></div>
-            <div><dt>signatures[]</dt><dd>1 entry &mdash; agent prefix a357ff06&hellip;</dd></div>
-            <div><dt>guard prefix 41510f63&hellip;</dt><dd class="absent">absent</dd></div>
+            <div><dt>executed_timestamp</dt><dd id="ledger-executed" class="live-value">null</dd></div>
+            <div><dt>deleted</dt><dd id="ledger-deleted" class="live-value">false</dd></div>
+            <div><dt>signatures[]</dt><dd id="ledger-signatures" class="live-value">1 entry &mdash; agent prefix a357ff06&hellip;</dd></div>
+            <div><dt>guard prefix 41510f63&hellip;</dt><dd id="ledger-guard" class="live-value absent">absent</dd></div>
             <div><dt>treasury 0.0.10502365</dt><dd>unchanged</dd></div>
             <div><dt>review fee</dt><dd>1,000,000 tinybars, settled</dd></div>
             <div><dt>failed check</dt><dd>recipient outside the mandate allowlist</dd></div>
           </dl>
+          <p id="ledger-status" class="live-status" role="status" aria-live="polite">Recorded schedule values. Live read not yet completed. Treasury, fee and failed check are recorded review evidence.</p>
           <p>
             <a href="https://testnet.mirrornode.hedera.com/api/v1/schedules/0.0.10502603" rel="noreferrer">Open the schedule on the mirror node</a>
             &middot; <a href="https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10502545/messages/2" rel="noreferrer">the guard's verdict record</a>
@@ -960,6 +1050,11 @@
           keys never leave the caller's machine, which is also why the guard cannot spend the
           treasury on its own.
         </p>
+        <dl class="rows">
+          <div><dt>Guard public key prefix</dt><dd><code id="guard-key">41510f63&hellip;</code></dd></div>
+          <div><dt>Guard identifier</dt><dd><code id="guard-identifier">uaid:aid:9Us31TEAEQZrKAuN9XKiaVCEHE59my6uoPfUH8aAXFVQUVz4AAxxKf4bjv8mreGAHz;uid=0;registry=countersign;proto=hcs-10;nativeId=hedera:testnet:0.0.10502369</code></dd></div>
+        </dl>
+        <p id="guard-status" class="live-status" role="status" aria-live="polite">Recorded identity, read 2026-09-13 from GET /guard. Live read not yet completed.</p>
       </section>
 
       <section class="section" aria-labelledby="review-title">
@@ -1058,7 +1153,7 @@
               is one of them. The buyer path has 2 recorded runs on topic 0.0.10507040, 1
               approved and 1 refused. A third set comes from the
               <a href="./sandbox.html">sandbox</a>, where a visitor drives the same guard from the
-              browser; those runs are listed live on that page and are counted in neither total.
+              browser; those runs are listed below and on that page and are counted in neither total.
               The sets are counted separately and never summed.
             </p>
             <p>
@@ -1069,6 +1164,15 @@
             </p>
           </div>
         </div>
+        <h3 id="feed-title">Recent sandbox authorization outcomes</h3>
+        <p>Operator-run reliability exercises, not users. Accounts are operator-owned and operator-funded, on Hedera testnet. Outcomes are reported by the guard; each schedule link opens the mirror node for execution evidence.</p>
+        <p id="feed-summary" class="live-status" role="status" aria-live="polite">2 listed runs: 1 approved / 1 refused / 0 other. Separate from evidence.json and buyer-path counts.</p>
+        <p id="feed-status" class="live-status" role="status" aria-live="polite">Recorded sandbox snapshot, read 2026-09-13 from GET /sandbox/runs. Live read not yet completed.</p>
+        <ol id="feed-list" class="run-feed" tabindex="0" aria-labelledby="feed-title">
+          <li><a href="https://testnet.mirrornode.hedera.com/api/v1/schedules/0.0.10512157" rel="noreferrer">Approved · schedule 0.0.10512157</a><span>vendor · 10000000 tinybars</span></li>
+          <li><a href="https://testnet.mirrornode.hedera.com/api/v1/schedules/0.0.10512142" rel="noreferrer">Refused · schedule 0.0.10512142</a><span>stranger · 1000000 tinybars</span></li>
+        </ol>
+        <p><a href="./sandbox.html">Open the sandbox</a> and choose “Try this transfer” to request an authorization review. Reload this page to read its outcome here.</p>
         <div class="scroll" tabindex="0" role="region" aria-label="Schedule path: one approved and one refused review">
           <table>
             <caption>Schedule path, 2026-09-12 &middot; POST /review</caption>
@@ -1208,9 +1312,95 @@
         </div>
         <div class="colophon">
           <p>Countersign is an ETHOnline 2026 entry, Hedera testnet only. Every recorded run is an operator-run reliability exercise, not a user; every testnet payment is a paid protocol trial, not revenue. No combined activity total is reported.</p>
-          <p>Hand-written HTML and CSS, no build step, no scripts on this page.</p>
+          <p>Hand-written HTML and CSS, no build step. Live reads preserve the recorded evidence when unavailable.</p>
         </div>
       </div>
     </footer>
+    <script type="module">
+      const mirror = "https://testnet.mirrornode.hedera.com/api/v1/schedules/";
+      const setText = (id, value) => { document.querySelector(id).textContent = value; };
+
+      async function readLive(url, status, render) {
+        try {
+          const response = await fetch(url, {
+            headers: { accept: "application/json" },
+            cache: "no-store",
+            signal: AbortSignal.timeout(8000),
+          });
+          if (!response.ok) throw new Error("Live read failed");
+          render(await response.json());
+          setText(status, `Read live at ${new Date().toISOString()} · ${status === "#ledger-status" ? "schedule fields only; other review evidence remains recorded." : "Hedera testnet."}`);
+        } catch {
+          setText(status, "Live read did not complete. Recorded values retained. Reload to retry.");
+        }
+      }
+
+      readLive(`${mirror}0.0.10502603`, "#ledger-status", schedule => {
+        if (!schedule || schedule.schedule_id !== "0.0.10502603" ||
+            typeof schedule.deleted !== "boolean" ||
+            (schedule.executed_timestamp !== null &&
+              (typeof schedule.executed_timestamp !== "string" || !/^(0|[1-9][0-9]*)\.[0-9]{9}$/.test(schedule.executed_timestamp))) ||
+            !Array.isArray(schedule.signatures)) throw new Error("Invalid schedule");
+        const prefixes = schedule.signatures.map(signature => {
+          const value = signature?.public_key_prefix;
+          if (typeof value !== "string") throw new Error("Invalid signer prefix");
+          const binary = atob(value);
+          if (!binary.length || binary.length > 32 || btoa(binary) !== value) throw new Error("Invalid signer prefix");
+          return Array.from(binary, byte => byte.charCodeAt(0).toString(16).padStart(2, "0")).join("");
+        });
+        const agentPresent = prefixes.some(prefix => prefix.startsWith("a357ff06"));
+        const guardPresent = prefixes.some(prefix => prefix.startsWith("41510f63"));
+        if (prefixes.some(prefix => prefix.length < 8)) throw new Error("Signer prefix too short to identify");
+        setText("#ledger-executed", schedule.executed_timestamp === null ? "null" : schedule.executed_timestamp);
+        setText("#ledger-deleted", String(schedule.deleted));
+        setText("#ledger-signatures", `${prefixes.length} ${prefixes.length === 1 ? "entry" : "entries"} — agent prefix a357ff06… ${agentPresent ? "present" : "absent"}`);
+        setText("#ledger-guard", guardPresent ? "present" : "absent from signatures[]");
+      });
+
+      readLive("/sandbox/runs", "#feed-status", data => {
+        const outcomes = ["approved", "refused", "running", "failed"];
+        if (!data || data.origin !== "operator" || typeof data.disclosure !== "string" || !Array.isArray(data.runs)) throw new Error("Invalid runs");
+        for (const run of data.runs) {
+          if (!run || run.origin !== "operator" || typeof run.runId !== "string" || !run.runId ||
+              !["vendor", "stranger", "agent"].includes(run.recipient) ||
+              typeof run.amountTinybars !== "string" || !/^[1-9][0-9]*$/.test(run.amountTinybars) ||
+              !outcomes.includes(run.outcome) ||
+              (run.scheduleId !== null && (typeof run.scheduleId !== "string" || !/^0\.0\.[1-9][0-9]*$/.test(run.scheduleId))) ||
+              (["approved", "refused"].includes(run.outcome) && !run.scheduleId)) throw new Error("Invalid run");
+        }
+        const rows = data.runs.map(run => {
+          const row = document.createElement("li");
+          const outcome = run.outcome[0].toUpperCase() + run.outcome.slice(1);
+          const title = document.createElement(run.scheduleId ? "a" : "span");
+          if (run.scheduleId) {
+            title.href = `${mirror}${run.scheduleId}`;
+            title.rel = "noreferrer";
+          }
+          title.textContent = `${outcome} · ${run.scheduleId ? `schedule ${run.scheduleId}` : "schedule not yet recorded"}`;
+          const detail = document.createElement("span");
+          detail.textContent = `${run.recipient} · ${run.amountTinybars} tinybars`;
+          row.append(title, detail);
+          return row;
+        });
+        if (!rows.length) {
+          const empty = document.createElement("li");
+          empty.textContent = "No sandbox runs recorded yet. Authorization outcomes will appear here after you open the sandbox and choose ‘Try this transfer’.";
+          rows.push(empty);
+        }
+        const approved = data.runs.filter(run => run.outcome === "approved").length;
+        const refused = data.runs.filter(run => run.outcome === "refused").length;
+        document.querySelector("#feed-list").replaceChildren(...rows);
+        setText("#feed-summary", `${data.runs.length} listed runs: ${approved} approved / ${refused} refused / ${data.runs.length - approved - refused} other. Separate from evidence.json and buyer-path counts.`);
+      });
+
+      readLive("/guard", "#guard-status", data => {
+        if (!data || typeof data.guardPublicKey !== "string" ||
+            !/^302a300506032b6570032100[0-9a-f]{64}$/i.test(data.guardPublicKey) ||
+            typeof data.guardIdentifier !== "string" || data.guardIdentifier.length > 512 ||
+            !/^uaid:aid:[A-Za-z0-9]+;uid=0;registry=countersign;proto=hcs-10;nativeId=hedera:testnet:0\.0\.[1-9][0-9]*$/.test(data.guardIdentifier)) throw new Error("Invalid guard identity");
+        setText("#guard-key", `${data.guardPublicKey.slice(24, 32).toLowerCase()}…`);
+        setText("#guard-identifier", data.guardIdentifier);
+      });
+    </script>
   </body>
 </html>
