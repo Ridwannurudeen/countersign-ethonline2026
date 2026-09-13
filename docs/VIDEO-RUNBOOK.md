@@ -43,7 +43,7 @@ the public internet to `https://countersign.gudman.xyz`, which is the thing wort
 
 ## Before you hit record
 
-1. `npm test` — expect 543 passing, 0 failing. `python -m pytest python/ -q` — expect 13.
+1. `npm test` — expect 570 passing, 0 failing. `python -m pytest python/ -q` — expect 13.
    Re-check both before recording; do not read a stale number on camera.
 2. Terminal at a large font, full screen, dark background. The output is wide; make sure
    `PASS:` lines do not wrap.

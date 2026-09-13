@@ -94,7 +94,7 @@ reserved in SQLite before approval, and only the request that wins the reservati
 submit ScheduleSign. Participant identity is HCS-14 for both agent and guard, and verdicts
 go to immutable, submit-key-protected HCS topics with custom fees rejected at startup.
 
-543 TypeScript tests and 13 Python tests, all offline. One defect the offline suite could not have caught
+570 TypeScript tests and 13 Python tests, all offline. One defect the offline suite could not have caught
 surfaced on the first live run: the mirror node returns `signatures[].public_key_prefix` as
 base64 and three code paths expected hex. The fixtures used `"a".repeat(16)`, which is
 itself valid base64, so they passed while asserting nothing about the real encoding. The
