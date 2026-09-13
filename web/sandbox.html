@@ -331,6 +331,7 @@
 
       function problem(error) {
         if (error.status === 429) return "You are going too fast. Wait 30 seconds before another run. Inspect recent runs below while you wait.";
+        if (error.status === 503 && /busy/.test(error.message)) return "Another run is already in progress. Nothing was submitted and no allowance was used. Try again in about half a minute.";
         if (error.status === 503 && /budget exhausted|envelopes exhausted/.test(error.message)) return "The operator-funded budget or pre-signed policy allowance is spent. Inspect recent runs below; their ledger evidence remains available.";
         if (error.status === 404) return "This run or sandbox route is unavailable at this origin. Inspect recent runs below; your selection is preserved.";
         return "The sandbox service or network could not complete this request. Your selection is preserved. Inspect recent runs before trying again: a submitted transfer may still be running. Reload to reconnect.";

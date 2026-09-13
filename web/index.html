@@ -1481,6 +1481,8 @@
           setText("#outcome-detail", received ? "The stages above are the last valid response. Open this run to check its current state." : "The service has not returned a complete authorization record for this attempt.");
           recordedFallback(error.status === 429
             ? "The service allows one run per 30 seconds per address. Wait 30 seconds before trying again."
+            : error.status === 503 && /busy/.test(error.message ?? "")
+              ? "Another run is already in progress. Nothing was submitted and no allowance was used. Try again in about half a minute."
             : error.status === 503
               ? "The live sandbox is unavailable: its operator budget or owner authorizations may be exhausted."
               : "The service or network did not return a valid response. A submitted transfer may still be running; inspect the run or recent sandbox records before trying again.");
