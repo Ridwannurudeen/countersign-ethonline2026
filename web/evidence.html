@@ -14,11 +14,27 @@
     <style>
       :root {
         color-scheme: light;
-        font-family:
-          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-          "Segoe UI", sans-serif;
-        color: #172019;
-        background: #f4f1e8;
+        --ink: #172019;
+        --muted: #4d574f;
+        --canvas: #f4f1e8;
+        --surface: #fffcf4;
+        --sunk: #ebe7dc;
+        --line: #b8b4a8;
+        --line-strong: #687269;
+        --green: #145c43;
+        --red: #8b2d27;
+        --red-soft: #f8e9e5;
+        --serif: Charter, "Bitstream Charter", "Iowan Old Style", Georgia, "Times New Roman", serif;
+        --mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+      }
+
+      html {
+        font-family: var(--serif);
+        font-size: 106.25%;
+        line-height: 1.55;
+        color: var(--ink);
+        background: var(--canvas);
+        -webkit-text-size-adjust: 100%;
       }
 
       * {
@@ -32,31 +48,30 @@
       body::before {
         display: block;
         height: 0.4rem;
-        background: #145c43;
+        background: var(--green);
         content: "";
       }
 
-      header,
-      main,
-      footer {
+      .page-hero,
+      main {
         width: min(46rem, calc(100% - 2rem));
         margin-inline: auto;
       }
 
-      header {
+      .page-hero {
         padding: 4rem 0 2rem;
       }
 
       .eyebrow,
       .badge {
         font-size: 0.75rem;
-        font-weight: 750;
+        font-weight: 400;
         letter-spacing: 0.09em;
         text-transform: uppercase;
       }
 
       .eyebrow {
-        color: #145c43;
+        color: var(--green);
       }
 
       h1,
@@ -68,14 +83,15 @@
       h1 {
         max-width: 14ch;
         margin-bottom: 1rem;
-        font-family: Georgia, "Times New Roman", serif;
+        font-family: var(--serif);
         font-size: clamp(2.3rem, 7vw, 4.25rem);
-        font-weight: 500;
+        font-weight: 400;
         letter-spacing: -0.04em;
         line-height: 0.98;
       }
 
       h2 {
+        font-weight: 400;
         margin-bottom: 0.4rem;
         font-size: 1.15rem;
       }
@@ -86,7 +102,7 @@
 
       .lede {
         max-width: 42rem;
-        color: #3f4a42;
+        color: var(--muted);
         font-size: 1.05rem;
       }
 
@@ -94,9 +110,9 @@
       .empty,
       .load-state,
       noscript section {
-        border: 1px solid #b8b4a8;
-        border-radius: 0.35rem;
-        background: #fffcf4;
+        border: 1px solid var(--line);
+        border-radius: 0;
+        background: var(--surface);
         padding: 1rem 1.15rem;
       }
 
@@ -129,9 +145,9 @@
       }
 
       .record {
-        border: 1px solid #b8b4a8;
-        border-radius: 0.35rem;
-        background: #fffcf4;
+        border: 1px solid var(--line);
+        border-radius: 0;
+        background: var(--surface);
         padding: 1.1rem;
       }
 
@@ -145,49 +161,16 @@
       }
 
       .record-heading h3 {
+        font-weight: 400;
         margin: 0;
         font-size: 1rem;
       }
 
-      a {
-        color: #064f99;
-        text-underline-offset: 0.18em;
-      }
-
-      .site-nav {
-        margin-bottom: 2.25rem;
-        padding-bottom: 1rem;
-        border-bottom: 1px solid #b8b4a8;
-      }
-
-      .site-nav ul {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.35rem 1.25rem;
-        margin: 0;
-        padding: 0;
-        font-size: 0.85rem;
-        list-style: none;
-      }
-
-      .site-nav a {
-        color: #4d574f;
-      }
-
-      .site-nav a[aria-current="page"] {
-        color: #172019;
-        font-weight: 750;
-      }
-
-      a:hover {
-        color: #00376c;
-      }
-
       .badge {
-        border: 1px solid #687269;
-        border-radius: 999px;
+        border: 1px solid var(--line-strong);
+        border-radius: 0;
         padding: 0.25rem 0.5rem;
-        color: #39433b;
+        color: var(--muted);
       }
 
       dl {
@@ -198,8 +181,8 @@
       }
 
       dt {
-        color: #4d574f;
-        font-weight: 650;
+        color: var(--muted);
+        font-weight: 400;
       }
 
       dd {
@@ -210,22 +193,16 @@
       .finding,
       .failure {
         margin: 1rem 0 0;
-        border-left: 0.25rem solid #8b2d27;
+        border-left: 0.25rem solid var(--red);
         padding: 0.75rem 0.9rem;
-        background: #f8e9e5;
-        color: #5f1b17;
+        background: var(--red-soft);
+        color: var(--red);
       }
 
       .failure {
-        border-left-color: #8b6415;
-        background: #fff3d2;
-        color: #5b410d;
-      }
-
-      footer {
-        padding: 3rem 0 2rem;
-        color: #4d574f;
-        font-size: 0.9rem;
+        border-left-color: var(--line-strong);
+        background: var(--sunk);
+        color: var(--ink);
       }
 
       [hidden] {
@@ -233,7 +210,7 @@
       }
 
       @media (max-width: 34rem) {
-        header {
+        .page-hero {
           padding-top: 2.5rem;
         }
 
@@ -246,10 +223,227 @@
           margin-top: 0.55rem;
         }
       }
+
+      .wrap {
+        width: min(72rem, 100% - 2.5rem);
+        margin-inline: auto;
+      }
+
+      .site-head {
+        border-bottom: 1px solid var(--line);
+      }
+
+      .head-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 1rem 2rem;
+        padding: 1.1rem 0 0.9rem;
+      }
+
+      .brand {
+        display: grid;
+        gap: 0.05rem;
+        color: var(--ink);
+        text-decoration: none;
+      }
+
+      .brand-name {
+        font-size: 1.4rem;
+        font-weight: 400;
+        letter-spacing: -0.02em;
+        line-height: 1;
+      }
+
+      .brand-sub {
+        font-family: var(--mono);
+        font-size: 0.68rem;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+      }
+
+      a {
+        color: var(--ink);
+        overflow-wrap: anywhere;
+        text-decoration: underline;
+        text-decoration-color: var(--line-strong);
+        text-decoration-thickness: 1px;
+        text-underline-offset: 0.2em;
+        transition: text-decoration-color 150ms ease-out, color 150ms ease-out;
+      }
+
+      a:hover {
+        color: var(--green);
+        text-decoration-color: var(--green);
+      }
+
+      .site-nav ul {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem 1.35rem;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .site-nav a {
+        display: inline-block;
+        padding: 0.2rem 0;
+        font-family: var(--mono);
+        font-size: 0.74rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+        text-decoration: none;
+        border-bottom: 1px solid transparent;
+      }
+
+      .site-nav a:hover {
+        color: var(--ink);
+      }
+
+      .site-nav a[aria-current="page"] {
+        color: var(--ink);
+        border-bottom-color: var(--ink);
+      }
+
+      .site-foot {
+        padding: 2.5rem 0 3rem;
+        border-top: 1px solid var(--line);
+        font-size: 0.92rem;
+        color: var(--muted);
+      }
+
+      .foot-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 2rem;
+      }
+
+      .foot-grid h2 {
+        margin-bottom: 0.6rem;
+        font-family: var(--mono);
+        font-size: 0.74rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .foot-grid ul {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .foot-grid li {
+        margin-bottom: 0.3rem;
+      }
+
+      .foot-grid a {
+        color: var(--ink);
+      }
+
+      .colophon {
+        margin-top: 2.5rem;
+        padding-top: 1.25rem;
+        border-top: 1px solid var(--line);
+      }
+
+      .colophon p {
+        margin: 0 0 0.4rem;
+        max-width: none;
+      }
+
+      .eyebrow,
+      .badge,
+      dt {
+        font-family: var(--mono);
+        font-weight: 400;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      dt {
+        font-size: 0.74rem;
+      }
+
+      code,
+      dd {
+        font-family: var(--mono);
+        font-size: 0.86em;
+        font-variant-numeric: tabular-nums;
+      }
+
+      main {
+        padding-bottom: 3rem;
+      }
+
+      .page-hero,
+      .record {
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+
+      @media (max-width: 42rem) {
+        .foot-grid {
+          grid-template-columns: minmax(0, 1fr);
+        }
+      }
+
+      :focus-visible {
+        outline: 2px solid var(--green);
+        outline-offset: 3px;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          transition: none !important;
+          animation: none !important;
+        }
+      }
+
+      @media print {
+        *,
+        *::before,
+        *::after {
+          color: var(--ink) !important;
+          background: white !important;
+          box-shadow: none !important;
+          text-shadow: none !important;
+          border-color: var(--ink) !important;
+        }
+
+        .skip-link,
+        .site-nav,
+        body::before {
+          display: none !important;
+        }
+
+        .ledger,
+        button,
+        .btn {
+          border: 1px solid var(--ink);
+        }
+      }
     </style>
+    <noscript>
+        <style>
+          #page-status {
+            display: none;
+          }
+        </style>
+    </noscript>
   </head>
   <body>
-    <header>
+    <header class="site-head">
+      <div class="wrap head-row">
+        <a class="brand" href="./index.html">
+          <span class="brand-name">Countersign</span>
+          <span class="brand-sub">guard 0.0.10502369 &middot; hedera:testnet</span>
+        </a>
       <nav class="site-nav" aria-label="Site">
         <ul>
           <li><a href="./index.html">Overview</a></li>
@@ -262,6 +456,9 @@
           <li><a href="https://github.com/Ridwannurudeen/countersign-ethonline2026" rel="noreferrer">Source</a></li>
         </ul>
       </nav>
+      </div>
+    </header>
+    <div class="page-hero">
       <p class="eyebrow">Countersign / Hedera testnet</p>
       <h1>Schedule evidence, read from Hedera.</h1>
       <p class="lede">
@@ -269,7 +466,7 @@
         schedule. The result is fetched in your browser, so you do not have to
         trust a status generated by Countersign.
       </p>
-    </header>
+    </div>
 
     <main>
       <section class="explanation" aria-labelledby="refusal-heading">
@@ -316,17 +513,49 @@
             separately.
           </p>
         </section>
-        <style>
-          #page-status {
-            display: none;
-          }
-        </style>
       </noscript>
     </main>
 
-    <footer>
-      No combined activity total is reported. Operator-run trials are never
-      presented as users, and testnet payments are never presented as revenue.
+    <footer class="site-foot">
+      <div class="wrap">
+        <div class="foot-grid">
+          <section aria-labelledby="foot-live">
+            <h2 id="foot-live">Live surfaces</h2>
+            <ul>
+              <li><a href="https://countersign.gudman.xyz/guard" rel="noreferrer">GET /guard</a> &mdash; key and identifier, unpaid</li>
+              <li><a href="https://countersign.gudman.xyz/.well-known/agent.json" rel="noreferrer">GET /.well-known/agent.json</a> &mdash; agent card, unpaid</li>
+              <li><a href="./evidence.html">Evidence</a> &mdash; every recorded schedule, checked in your browser</li>
+              <li><a href="./replay.html">Replay</a> &mdash; a recorded review, step by step</li>
+            </ul>
+          </section>
+          <section aria-labelledby="foot-read">
+            <h2 id="foot-read">Read</h2>
+            <ul>
+              <li><a href="./how-it-works.html">How it works</a></li>
+              <li><a href="./developers.html">For developers</a></li>
+              <li><a href="./limitations.html">Limitations</a></li>
+              <li><a href="https://github.com/Ridwannurudeen/countersign-ethonline2026" rel="noreferrer">Source on GitHub</a></li>
+              <li><a href="https://github.com/Ridwannurudeen/countersign-ethonline2026/blob/main/THREAT_MODEL.md" rel="noreferrer">Threat model</a></li>
+            </ul>
+          </section>
+          <section aria-labelledby="foot-ledger">
+            <h2 id="foot-ledger">On the ledger</h2>
+            <ul>
+              <li><a href="https://testnet.mirrornode.hedera.com/api/v1/accounts/0.0.10502365" rel="noreferrer">Treasury 0.0.10502365</a></li>
+              <li><a href="https://testnet.mirrornode.hedera.com/api/v1/accounts/0.0.10502367" rel="noreferrer">Agent 0.0.10502367</a></li>
+              <li><a href="https://testnet.mirrornode.hedera.com/api/v1/accounts/0.0.10502369" rel="noreferrer">Guard 0.0.10502369</a></li>
+              <li><a href="https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10502545/messages" rel="noreferrer">Verdict topic 0.0.10502545</a></li>
+              <li><a href="https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10507040/messages" rel="noreferrer">Verdict topic 0.0.10507040</a></li>
+              <li><a href="https://testnet.mirrornode.hedera.com/api/v1/accounts/0.0.10511893" rel="noreferrer">Sandbox treasury 0.0.10511893</a></li>
+              <li><a href="https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10511981/messages" rel="noreferrer">Sandbox verdict topic 0.0.10511981</a></li>
+            </ul>
+          </section>
+        </div>
+        <div class="colophon">
+          <p>No combined activity total is reported. Operator-run trials are never
+      presented as users, and testnet payments are never presented as revenue.</p>
+        </div>
+      </div>
     </footer>
 
     <script type="module">

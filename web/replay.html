@@ -16,25 +16,26 @@
         color-scheme: light;
         --ink: #172019;
         --muted: #4d574f;
-        --faint: #737c74;
         --canvas: #f4f1e8;
         --surface: #fffcf4;
+        --sunk: #ebe7dc;
         --line: #b8b4a8;
         --line-strong: #687269;
-        --accent: #145c43;
-        --accent-soft: #dcebe3;
-        --link: #064f99;
-        --warning: #8b6415;
-        --warning-soft: #fff3d2;
-        --refusal: #8b2d27;
-        --refusal-soft: #f8e9e5;
-        --radius: 0.35rem;
-        --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-        font-family:
-          ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-          sans-serif;
+        --green: #145c43;
+        --red: #8b2d27;
+        --red-soft: #f8e9e5;
+        --serif: Charter, "Bitstream Charter", "Iowan Old Style", Georgia, "Times New Roman", serif;
+        --mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+        --radius: 0;
+      }
+
+      html {
+        font-family: var(--serif);
+        font-size: 106.25%;
+        line-height: 1.55;
         color: var(--ink);
         background: var(--canvas);
+        -webkit-text-size-adjust: 100%;
       }
 
       * {
@@ -49,22 +50,8 @@
       body::before {
         display: block;
         height: 0.4rem;
-        background: var(--accent);
+        background: var(--green);
         content: "";
-      }
-
-      body::after {
-        position: fixed;
-        inset: 0;
-        z-index: -1;
-        background-image: radial-gradient(
-          rgba(20, 92, 67, 0.08) 0.7px,
-          transparent 0.7px
-        );
-        background-size: 28px 28px;
-        mask-image: linear-gradient(to bottom, #000, transparent 72%);
-        content: "";
-        pointer-events: none;
       }
 
       .skip-link {
@@ -75,47 +62,22 @@
         transform: translateY(-180%);
         border-radius: var(--radius);
         padding: 0.7rem 0.9rem;
-        color: var(--surface);
-        background: var(--accent);
+        font-family: var(--mono);
+        color: var(--canvas);
+        background: var(--green);
       }
 
       .skip-link:focus {
         transform: translateY(0);
       }
 
-      .site-nav {
-        margin-bottom: 2.25rem;
-        padding-bottom: 1rem;
-        border-bottom: 1px solid var(--line);
-      }
-
-      .site-nav ul {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.35rem 1.25rem;
-        margin: 0;
-        padding: 0;
-        font-size: 0.85rem;
-        list-style: none;
-      }
-
-      .site-nav a {
-        color: var(--muted);
-      }
-
-      .site-nav a[aria-current="page"] {
-        color: var(--ink);
-        font-weight: 750;
-      }
-
-      header,
-      main,
-      footer {
+      .page-hero,
+      main {
         width: min(68rem, calc(100% - 2rem));
         margin-inline: auto;
       }
 
-      body > header {
+      .page-hero {
         display: grid;
         grid-template-columns: minmax(0, 1.25fr) minmax(16rem, 0.75fr);
         gap: 3rem;
@@ -133,19 +95,21 @@
       h1 {
         max-width: 12ch;
         margin-bottom: 1rem;
-        font-family: Georgia, "Times New Roman", serif;
+        font-family: var(--serif);
         font-size: clamp(2.7rem, 7vw, 5.4rem);
-        font-weight: 500;
+        font-weight: 400;
         letter-spacing: -0.045em;
         line-height: 0.94;
       }
 
       h2 {
+        font-weight: 400;
         font-size: clamp(1.35rem, 3vw, 2rem);
         letter-spacing: -0.025em;
       }
 
       h3 {
+        font-weight: 400;
         margin-bottom: 0.45rem;
         font-size: 1.05rem;
       }
@@ -159,18 +123,18 @@
       .origin,
       label {
         font-size: 0.72rem;
-        font-weight: 760;
+        font-weight: 400;
         letter-spacing: 0.09em;
         text-transform: uppercase;
       }
 
       .eyebrow {
-        color: var(--accent);
+        color: var(--green);
       }
 
       .lede {
         max-width: 42rem;
-        color: #3f4a42;
+        color: var(--muted);
         font-size: 1.05rem;
       }
 
@@ -195,18 +159,17 @@
         width: 0.5rem;
         height: 0.5rem;
         border: 1px solid currentColor;
-        border-radius: 50%;
+        border-radius: 0;
         content: "";
       }
 
       .source[data-source="live"] {
-        color: var(--accent);
+        color: var(--green);
       }
 
       .source[data-source="live"]::before {
-        border-color: var(--accent);
-        background: var(--accent);
-        animation: pulse 1.8s ease-out infinite;
+        border-color: var(--green);
+        background: var(--green);
       }
 
       .legend .source + .source {
@@ -252,22 +215,13 @@
         outline: 2px solid transparent;
         box-shadow:
           0 0 0 2px var(--canvas),
-          0 0 0 4px var(--accent);
-      }
-
-      a {
-        color: var(--link);
-        text-underline-offset: 0.18em;
-      }
-
-      a:hover {
-        color: #00376c;
+          0 0 0 4px var(--green);
       }
 
       .origin {
         display: inline-block;
         border: 1px solid var(--line-strong);
-        border-radius: 999px;
+        border-radius: 0;
         padding: 0.35rem 0.55rem;
         color: var(--muted);
       }
@@ -321,8 +275,8 @@
       .step[data-stopped="true"] + .step::before {
         background: repeating-linear-gradient(
           to bottom,
-          var(--refusal) 0,
-          var(--refusal) 3px,
+          var(--red) 0,
+          var(--red) 3px,
           transparent 3px,
           transparent 8px
         );
@@ -336,7 +290,7 @@
         height: 3rem;
         place-items: center;
         border: 1px solid var(--line-strong);
-        border-radius: 50%;
+        border-radius: 0;
         color: var(--muted);
         background: var(--canvas);
         font: 0.8rem var(--mono);
@@ -344,9 +298,9 @@
       }
 
       .step[data-stopped="true"] .step-number {
-        border-color: var(--refusal);
-        color: var(--refusal);
-        background: var(--refusal-soft);
+        border-color: var(--red);
+        color: var(--red);
+        background: var(--red-soft);
       }
 
       .step-card {
@@ -359,8 +313,8 @@
 
       .step[data-stopped="true"] .step-card {
         border-style: dashed;
-        border-color: #c5928d;
-        background: #fffaf4;
+        border-color: var(--red);
+        background: var(--red-soft);
       }
 
       .step-meta {
@@ -383,14 +337,14 @@
 
       .facts {
         display: grid;
-        grid-template-columns: minmax(8rem, max-content) minmax(0, 1fr);
+        grid-template-columns: max-content minmax(0, 1fr);
         gap: 0.35rem 1rem;
         margin: 0.8rem 0 0;
       }
 
       .facts dt {
         color: var(--muted);
-        font-weight: 650;
+        font-weight: 400;
       }
 
       .facts dd {
@@ -398,7 +352,6 @@
         overflow-wrap: anywhere;
       }
 
-      code,
       .numeric {
         font-family: var(--mono);
         font-variant-numeric: tabular-nums;
@@ -416,34 +369,18 @@
       }
 
       .failure {
-        border-left: 0.25rem solid var(--warning);
+        border-left: 0.25rem solid var(--line-strong);
         padding: 0.75rem 0.9rem;
-        color: #5b410d;
-        background: var(--warning-soft);
-      }
-
-      footer {
-        padding: 3rem 0 2rem;
-        color: var(--muted);
-        font-size: 0.9rem;
+        color: var(--ink);
+        background: var(--sunk);
       }
 
       [hidden] {
         display: none !important;
       }
 
-      @keyframes pulse {
-        0% {
-          box-shadow: 0 0 0 0 rgba(20, 92, 67, 0.32);
-        }
-        70%,
-        100% {
-          box-shadow: 0 0 0 0.38rem rgba(20, 92, 67, 0);
-        }
-      }
-
       @media (max-width: 44rem) {
-        body > header {
+        .page-hero {
           grid-template-columns: 1fr;
           gap: 1rem;
           padding-top: 2.7rem;
@@ -483,16 +420,219 @@
         *::before,
         *::after {
           scroll-behavior: auto !important;
-          animation-duration: 0.01ms !important;
-          animation-iteration-count: 1 !important;
-          transition-duration: 0.01ms !important;
+          animation: none !important;
+          transition: none !important;
+        }
+      }
+
+      .wrap {
+        width: min(72rem, 100% - 2.5rem);
+        margin-inline: auto;
+      }
+
+      .site-head {
+        border-bottom: 1px solid var(--line);
+      }
+
+      .head-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 1rem 2rem;
+        padding: 1.1rem 0 0.9rem;
+      }
+
+      .brand {
+        display: grid;
+        gap: 0.05rem;
+        color: var(--ink);
+        text-decoration: none;
+      }
+
+      .brand-name {
+        font-size: 1.4rem;
+        font-weight: 400;
+        letter-spacing: -0.02em;
+        line-height: 1;
+      }
+
+      .brand-sub {
+        font-family: var(--mono);
+        font-size: 0.68rem;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+      }
+
+      a {
+        color: var(--ink);
+        overflow-wrap: anywhere;
+        text-decoration: underline;
+        text-decoration-color: var(--line-strong);
+        text-decoration-thickness: 1px;
+        text-underline-offset: 0.2em;
+        transition: text-decoration-color 150ms ease-out, color 150ms ease-out;
+      }
+
+      a:hover {
+        color: var(--green);
+        text-decoration-color: var(--green);
+      }
+
+      .site-nav ul {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem 1.35rem;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .site-nav a {
+        display: inline-block;
+        padding: 0.2rem 0;
+        font-family: var(--mono);
+        font-size: 0.74rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+        text-decoration: none;
+        border-bottom: 1px solid transparent;
+      }
+
+      .site-nav a:hover {
+        color: var(--ink);
+      }
+
+      .site-nav a[aria-current="page"] {
+        color: var(--ink);
+        border-bottom-color: var(--ink);
+      }
+
+      .site-foot {
+        padding: 2.5rem 0 3rem;
+        border-top: 1px solid var(--line);
+        font-size: 0.92rem;
+        color: var(--muted);
+      }
+
+      .foot-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 2rem;
+      }
+
+      .foot-grid h2 {
+        margin-bottom: 0.6rem;
+        font-family: var(--mono);
+        font-size: 0.74rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .foot-grid ul {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .foot-grid li {
+        margin-bottom: 0.3rem;
+      }
+
+      .foot-grid a {
+        color: var(--ink);
+      }
+
+      .colophon {
+        margin-top: 2.5rem;
+        padding-top: 1.25rem;
+        border-top: 1px solid var(--line);
+      }
+
+      .colophon p {
+        margin: 0 0 0.4rem;
+        max-width: none;
+      }
+
+      .eyebrow,
+      .source,
+      .origin,
+      label,
+      dt {
+        font-family: var(--mono);
+        font-weight: 400;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      dt {
+        font-size: 0.74rem;
+      }
+
+      code,
+      dd {
+        font-family: var(--mono);
+        font-size: 0.86em;
+        font-variant-numeric: tabular-nums;
+      }
+
+      main {
+        padding-bottom: 3rem;
+      }
+
+      .page-hero,
+      .step-card,
+      .toolbar > div {
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+
+      @media (max-width: 42rem) {
+        .foot-grid {
+          grid-template-columns: minmax(0, 1fr);
+        }
+      }
+
+      .skip-link:hover {
+        color: var(--canvas);
+        text-decoration-color: var(--canvas);
+      }
+
+      @media print {
+        *,
+        *::before,
+        *::after {
+          color: var(--ink) !important;
+          background: white !important;
+          box-shadow: none !important;
+          text-shadow: none !important;
+          border-color: var(--ink) !important;
+        }
+
+        .skip-link,
+        .site-nav,
+        body::before {
+          display: none !important;
+        }
+
+        .ledger,
+        button,
+        .btn {
+          border: 1px solid var(--ink);
         }
       }
     </style>
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to replay</a>
-    <header>
+    <header class="site-head">
+      <div class="wrap head-row">
+        <a class="brand" href="./index.html">
+          <span class="brand-name">Countersign</span>
+          <span class="brand-sub">guard 0.0.10502369 &middot; hedera:testnet</span>
+        </a>
       <nav class="site-nav" aria-label="Site">
         <ul>
           <li><a href="./index.html">Overview</a></li>
@@ -505,6 +645,9 @@
           <li><a href="https://github.com/Ridwannurudeen/countersign-ethonline2026" rel="noreferrer">Source</a></li>
         </ul>
       </nav>
+      </div>
+    </header>
+    <div class="page-hero">
       <div>
         <p class="eyebrow">Countersign / Review replay</p>
         <h1>One transfer. Six checkable steps.</h1>
@@ -524,7 +667,7 @@
           fetched in this browser from Hedera testnet.
         </p>
       </aside>
-    </header>
+    </div>
 
     <main id="main">
       <p id="load-state" class="load-state" role="status" aria-live="polite">
@@ -563,9 +706,46 @@
       </noscript>
     </main>
 
-    <footer>
-      Operator-run trials remain labelled as operator activity. Testnet review
-      payments are protocol trials, not revenue.
+    <footer class="site-foot">
+      <div class="wrap">
+        <div class="foot-grid">
+          <section aria-labelledby="foot-live">
+            <h2 id="foot-live">Live surfaces</h2>
+            <ul>
+              <li><a href="https://countersign.gudman.xyz/guard" rel="noreferrer">GET /guard</a> &mdash; key and identifier, unpaid</li>
+              <li><a href="https://countersign.gudman.xyz/.well-known/agent.json" rel="noreferrer">GET /.well-known/agent.json</a> &mdash; agent card, unpaid</li>
+              <li><a href="./evidence.html">Evidence</a> &mdash; every recorded schedule, checked in your browser</li>
+              <li><a href="./replay.html">Replay</a> &mdash; a recorded review, step by step</li>
+            </ul>
+          </section>
+          <section aria-labelledby="foot-read">
+            <h2 id="foot-read">Read</h2>
+            <ul>
+              <li><a href="./how-it-works.html">How it works</a></li>
+              <li><a href="./developers.html">For developers</a></li>
+              <li><a href="./limitations.html">Limitations</a></li>
+              <li><a href="https://github.com/Ridwannurudeen/countersign-ethonline2026" rel="noreferrer">Source on GitHub</a></li>
+              <li><a href="https://github.com/Ridwannurudeen/countersign-ethonline2026/blob/main/THREAT_MODEL.md" rel="noreferrer">Threat model</a></li>
+            </ul>
+          </section>
+          <section aria-labelledby="foot-ledger">
+            <h2 id="foot-ledger">On the ledger</h2>
+            <ul>
+              <li><a href="https://testnet.mirrornode.hedera.com/api/v1/accounts/0.0.10502365" rel="noreferrer">Treasury 0.0.10502365</a></li>
+              <li><a href="https://testnet.mirrornode.hedera.com/api/v1/accounts/0.0.10502367" rel="noreferrer">Agent 0.0.10502367</a></li>
+              <li><a href="https://testnet.mirrornode.hedera.com/api/v1/accounts/0.0.10502369" rel="noreferrer">Guard 0.0.10502369</a></li>
+              <li><a href="https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10502545/messages" rel="noreferrer">Verdict topic 0.0.10502545</a></li>
+              <li><a href="https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10507040/messages" rel="noreferrer">Verdict topic 0.0.10507040</a></li>
+              <li><a href="https://testnet.mirrornode.hedera.com/api/v1/accounts/0.0.10511893" rel="noreferrer">Sandbox treasury 0.0.10511893</a></li>
+              <li><a href="https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10511981/messages" rel="noreferrer">Sandbox verdict topic 0.0.10511981</a></li>
+            </ul>
+          </section>
+        </div>
+        <div class="colophon">
+          <p>Operator-run trials remain labelled as operator activity. Testnet review
+      payments are protocol trials, not revenue.</p>
+        </div>
+      </div>
     </footer>
 
     <script type="module">

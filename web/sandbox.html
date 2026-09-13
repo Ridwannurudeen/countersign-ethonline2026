@@ -88,10 +88,79 @@
       #recent-list { min-height: 9rem; margin: 0; padding: 0; list-style: none; }
       #recent-list li { padding: 1rem 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
       #recent-list p { margin-bottom: 0.4rem; }
-      .site-foot { padding: 2.5rem 0 3rem; color: var(--muted); font-size: 0.92rem; }
+      .site-foot {
+        padding: 2.5rem 0 3rem;
+        border-top: 1px solid var(--line);
+        font-size: 0.92rem;
+        color: var(--muted);
+      }
+
+      .foot-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 2rem;
+      }
+
+      .foot-grid h2 {
+        margin-bottom: 0.6rem;
+        font-family: var(--mono);
+        font-size: 0.74rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .foot-grid ul {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .foot-grid li {
+        margin-bottom: 0.3rem;
+      }
+
+      .foot-grid a {
+        color: var(--ink);
+      }
+
+      .colophon {
+        margin-top: 2.5rem;
+        padding-top: 1.25rem;
+        border-top: 1px solid var(--line);
+      }
+
+      .colophon p {
+        margin: 0 0 0.4rem;
+        max-width: none;
+      }
       @media (max-width: 60rem) { .instrument { grid-template-columns: minmax(0, 1fr); } }
-      @media (max-width: 42rem) { .section { padding: 3rem 0; } .page-hero { padding: 3rem 0 2.5rem; } .lede { font-size: 1.08rem; } .steps li { min-height: 10rem; } }
+      @media (max-width: 42rem) { .foot-grid { grid-template-columns: minmax(0, 1fr); } .section { padding: 3rem 0; } .page-hero { padding: 3rem 0 2.5rem; } .lede { font-size: 1.08rem; } .steps li { min-height: 10rem; } }
       @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; } }
+
+      @media print {
+        *,
+        *::before,
+        *::after {
+          color: var(--ink) !important;
+          background: white !important;
+          box-shadow: none !important;
+          text-shadow: none !important;
+          border-color: var(--ink) !important;
+        }
+
+        .skip-link,
+        .site-nav,
+        body::before {
+          display: none !important;
+        }
+
+        .ledger,
+        button,
+        .btn {
+          border: 1px solid var(--ink);
+        }
+      }
     </style>
   </head>
   <body>
@@ -163,10 +232,47 @@
         <ol id="recent-list" aria-label="Recent operator-run exercises"></ol>
       </section>
     </main>
-    <footer class="site-foot"><div class="wrap">
-      <p>Countersign is an ETHOnline 2026 entry, Hedera testnet only. Operator-owned accounts and funding; reliability exercises, not external usage.</p>
-      <p><a href="./limitations.html">Read the limitations</a> &middot; <a href="./developers.html">Use the endpoints</a></p>
-    </div></footer>
+    <footer class="site-foot">
+      <div class="wrap">
+        <div class="foot-grid">
+          <section aria-labelledby="foot-live">
+            <h2 id="foot-live">Live surfaces</h2>
+            <ul>
+              <li><a href="https://countersign.gudman.xyz/guard" rel="noreferrer">GET /guard</a> &mdash; key and identifier, unpaid</li>
+              <li><a href="https://countersign.gudman.xyz/.well-known/agent.json" rel="noreferrer">GET /.well-known/agent.json</a> &mdash; agent card, unpaid</li>
+              <li><a href="./evidence.html">Evidence</a> &mdash; every recorded schedule, checked in your browser</li>
+              <li><a href="./replay.html">Replay</a> &mdash; a recorded review, step by step</li>
+            </ul>
+          </section>
+          <section aria-labelledby="foot-read">
+            <h2 id="foot-read">Read</h2>
+            <ul>
+              <li><a href="./how-it-works.html">How it works</a></li>
+              <li><a href="./developers.html">For developers</a></li>
+              <li><a href="./limitations.html">Limitations</a></li>
+              <li><a href="https://github.com/Ridwannurudeen/countersign-ethonline2026" rel="noreferrer">Source on GitHub</a></li>
+              <li><a href="https://github.com/Ridwannurudeen/countersign-ethonline2026/blob/main/THREAT_MODEL.md" rel="noreferrer">Threat model</a></li>
+            </ul>
+          </section>
+          <section aria-labelledby="foot-ledger">
+            <h2 id="foot-ledger">On the ledger</h2>
+            <ul>
+              <li><a href="https://testnet.mirrornode.hedera.com/api/v1/accounts/0.0.10502365" rel="noreferrer">Treasury 0.0.10502365</a></li>
+              <li><a href="https://testnet.mirrornode.hedera.com/api/v1/accounts/0.0.10502367" rel="noreferrer">Agent 0.0.10502367</a></li>
+              <li><a href="https://testnet.mirrornode.hedera.com/api/v1/accounts/0.0.10502369" rel="noreferrer">Guard 0.0.10502369</a></li>
+              <li><a href="https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10502545/messages" rel="noreferrer">Verdict topic 0.0.10502545</a></li>
+              <li><a href="https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10507040/messages" rel="noreferrer">Verdict topic 0.0.10507040</a></li>
+              <li><a href="https://testnet.mirrornode.hedera.com/api/v1/accounts/0.0.10511893" rel="noreferrer">Sandbox treasury 0.0.10511893</a></li>
+              <li><a href="https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10511981/messages" rel="noreferrer">Sandbox verdict topic 0.0.10511981</a></li>
+            </ul>
+          </section>
+        </div>
+        <div class="colophon">
+          <p>Countersign is an ETHOnline 2026 entry, Hedera testnet only. Operator-owned accounts and funding; reliability exercises, not external usage.</p>
+          <p><a href="./limitations.html">Read the limitations</a> &middot; <a href="./developers.html">Use the endpoints</a></p>
+        </div>
+      </div>
+    </footer>
     <script type="module">
       const $ = (selector) => document.querySelector(selector);
       const mirror = "https://testnet.mirrornode.hedera.com/api/v1/";

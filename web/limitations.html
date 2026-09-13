@@ -794,6 +794,30 @@
           animation: none !important;
         }
       }
+
+      @media print {
+        *,
+        *::before,
+        *::after {
+          color: var(--ink) !important;
+          background: white !important;
+          box-shadow: none !important;
+          text-shadow: none !important;
+          border-color: var(--ink) !important;
+        }
+
+        .skip-link,
+        .site-nav,
+        body::before {
+          display: none !important;
+        }
+
+        .ledger,
+        button,
+        .btn {
+          border: 1px solid var(--ink);
+        }
+      }
     </style>
   </head>
   <body>
