@@ -187,7 +187,7 @@
       }
 
       .encounter-head p {
-        margin: 0;
+        margin: 0 auto 0 0;
         color: var(--muted);
         font: 0.74rem var(--mono);
       }
@@ -455,9 +455,13 @@
 
 
       .site-nav {
-        margin: 2.5rem 0 0;
-        padding-top: 1rem;
-        border-top: 1px solid var(--line);
+        margin: 0;
+      }
+
+      @media (max-width: 46rem) {
+        .site-nav {
+          flex: 1 0 100%;
+        }
       }
 
       .site-nav ul {
@@ -814,6 +818,18 @@
           <header class="encounter-head">
             <h1 id="encounter-title">Countersign</h1>
             <p>Hedera testnet</p>
+            <nav class="site-nav" aria-label="Site">
+              <ul>
+                <li><a href="./index.html" aria-current="page">Overview</a></li>
+                <li><a href="./sandbox.html">Sandbox</a></li>
+                <li><a href="./how-it-works.html">How it works</a></li>
+                <li><a href="./developers.html">Developers</a></li>
+                <li><a href="./limitations.html">Limitations</a></li>
+                <li><a href="./evidence.html">Evidence</a></li>
+                <li><a href="./replay.html">Replay</a></li>
+                <li><a href="https://github.com/Ridwannurudeen/countersign-ethonline2026" rel="noreferrer">Source</a></li>
+              </ul>
+            </nav>
           </header>
           <div class="invitation">
             <p class="proposition">You hold the agent key.<br />Try to move <em>0.01 HBAR.</em></p>
@@ -882,18 +898,6 @@
           <p>The agent can publish the transfer it wants, but its key alone satisfies neither branch. The same treasury can also pay an ordinary x402 seller: the agent and guard sign the purchase, through an unmodified facilitator. The owner does not sign each purchase.</p>
           <p>The tree below belongs to the recorded schedule-path treasury. The sandbox uses a separately funded treasury with the same authorization structure.</p>
         </div>
-          <nav class="site-nav" aria-label="Site">
-            <ul>
-              <li><a href="./index.html" aria-current="page">Overview</a></li>
-              <li><a href="./sandbox.html">Sandbox</a></li>
-              <li><a href="./how-it-works.html">How it works</a></li>
-              <li><a href="./developers.html">Developers</a></li>
-              <li><a href="./limitations.html">Limitations</a></li>
-              <li><a href="./evidence.html">Evidence</a></li>
-              <li><a href="./replay.html">Replay</a></li>
-              <li><a href="https://github.com/Ridwannurudeen/countersign-ethonline2026" rel="noreferrer">Source</a></li>
-            </ul>
-          </nav>
       <section class="key-explanation" aria-labelledby="key-tree-title">
         <div class="section-head">
           <h2 id="key-tree-title">Why your key needs another signature</h2>

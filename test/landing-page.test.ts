@@ -332,7 +332,11 @@ test("encounter static HTML remains an honest complete page without JavaScript",
   assert.match(source, /<h1\b/);
   assert.match(source, /<fieldset[^>]*disabled/);
   assert.match(source, /<noscript>[\s\S]*Previous operator run|<noscript>[\s\S]*previous refusal/);
-  assert.doesNotMatch(source.match(/<section[^>]*id="encounter"[\s\S]*?<\/section>/)![0], /<nav|allowlisted/i);
+  // The encounter must not reveal which account the owner allowlisted: discovering that by being
+  // refused is the point. Site navigation is not a pitch and belongs here -- without it a visitor
+  // could not reach the other six pages at all, which is how this shipped and had to be corrected.
+  assert.doesNotMatch(source.match(/<section[^>]*id="encounter"[\s\S]*?<\/section>/)![0], /allowlisted/i);
+  assert.match(source.match(/<header[^>]*class="encounter-head"[\s\S]*?<\/header>/)![0], /<nav class="site-nav"/);
   assert.doesNotMatch(source, /innerHTML/);
 });
 
