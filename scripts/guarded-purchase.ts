@@ -18,6 +18,7 @@ import { ExactHederaScheme as ServerScheme } from "@x402/hedera/exact/server";
 import { CountersignRefusal, createCosignedClientHederaSigner } from "../src/cosigned-client-signer.ts";
 import { canonicalMandateBytes, parseMandateEnvelope, type Mandate } from "../src/mandate.ts";
 import { resolveGuard } from "./hosted-review.ts";
+import { DEFAULT_COUNTERSIGN_METER } from "../src/payment-meter.ts";
 
 const NETWORK = "hedera:testnet";
 const PRICE = "1000000";
@@ -277,10 +278,14 @@ async function main(): Promise<void> {
         signature: Buffer.from(owner.sign(canonicalMandateBytes(mandate))).toString("base64url") });
       const guardPaymentClient = new x402Client().register(NETWORK, new ClientScheme(
         createClientHederaSigner(caller, callerKey, { network: NETWORK }),
-      )).setSpendControls({ allowedAssets: [{ network: NETWORK, asset: "0.0.0", maxAmountPerPayment: PRICE }] })
+      )).setSpendControls({ allowedAssets: [{ network: NETWORK, asset: "0.0.0", maxAmountPerPayment: DEFAULT_COUNTERSIGN_METER.maxTinybars }] })
         .onBeforePaymentCreation(async ({ selectedRequirements: quote }) => {
           assert.equal(quote.payTo, reviewRecipient);
-          assert.equal(quote.amount, PRICE);
+          // /countersign is metered on decoded bytes and transfer adjustments, so the fee is not a
+          // constant. Check the published floor and ceiling; docs/METERING.md gives the formula a
+          // caller reproduces to confirm the exact figure.
+          assert.ok(BigInt(quote.amount) >= BigInt(DEFAULT_COUNTERSIGN_METER.minTinybars));
+          assert.ok(BigInt(quote.amount) <= BigInt(DEFAULT_COUNTERSIGN_METER.maxTinybars));
           assert.equal(quote.network, NETWORK);
           assert.equal(quote.asset, "0.0.0");
           assert.equal(typeof quote.extra?.feePayer, "string");

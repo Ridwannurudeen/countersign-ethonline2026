@@ -6,6 +6,7 @@ import { AccountId, Client, PrivateKey, PublicKey } from "@hiero-ledger/sdk";
 
 import { createProductionReviewServer, type ProductionReviewTenant } from "../src/server.ts";
 import { countersignTransfer } from "../src/countersign-transfer.ts";
+import { DEFAULT_COUNTERSIGN_METER, validateCountersignMeter } from "../src/payment-meter.ts";
 
 // The long-running guard. The narrated flows start a review server on loopback
 // for the duration of one run; this keeps the same server alive at a public
@@ -128,17 +129,25 @@ export function parseGuardConfiguration(env: NodeJS.ProcessEnv = process.env) {
   }
   const host = env.COUNTERSIGN_HOST ?? "127.0.0.1";
   const verdictTopicId = env.COUNTERSIGN_VERDICT_TOPIC_ID?.trim();
+  const countersignMeter = {
+    baseTinybars: env.COUNTERSIGN_METER_BASE_TINYBARS ?? DEFAULT_COUNTERSIGN_METER.baseTinybars,
+    perKilobyteTinybars: env.COUNTERSIGN_METER_PER_KILOBYTE_TINYBARS ?? DEFAULT_COUNTERSIGN_METER.perKilobyteTinybars,
+    perAdjustmentTinybars: env.COUNTERSIGN_METER_PER_ADJUSTMENT_TINYBARS ?? DEFAULT_COUNTERSIGN_METER.perAdjustmentTinybars,
+    minTinybars: env.COUNTERSIGN_METER_MIN_TINYBARS ?? DEFAULT_COUNTERSIGN_METER.minTinybars,
+    maxTinybars: env.COUNTERSIGN_METER_MAX_TINYBARS ?? DEFAULT_COUNTERSIGN_METER.maxTinybars,
+  };
+  validateCountersignMeter(countersignMeter);
 
   return {
     tenants, publicOrigin, guardAccountId, guardPrivateKey, feeAccountId,
-    feePublicKey, allowedProtobufVersion, allowedServicesVersion, port, host, verdictTopicId,
+    feePublicKey, allowedProtobufVersion, allowedServicesVersion, port, host, verdictTopicId, countersignMeter,
   };
 }
 
 async function main(): Promise<void> {
   const {
     tenants, publicOrigin, guardAccountId, guardPrivateKey, feeAccountId,
-    feePublicKey, allowedProtobufVersion, allowedServicesVersion, port, host, verdictTopicId,
+    feePublicKey, allowedProtobufVersion, allowedServicesVersion, port, host, verdictTopicId, countersignMeter,
   } = parseGuardConfiguration();
 
   const client = Client.forTestnet().setOperator(
@@ -162,6 +171,7 @@ async function main(): Promise<void> {
     payment: {
       resourceUrl: `${publicOrigin}/review`,
       priceTinybars: REVIEW_PRICE_TINYBARS,
+      countersignMeter,
       operationalAccount: {
         accountId: feeAccountId,
         publicKey: feePublicKey,

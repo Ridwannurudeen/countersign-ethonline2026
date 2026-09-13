@@ -39,6 +39,7 @@ import {
 import type { VerdictRecord } from "../src/verdict-log.ts";
 import { countersignTransfer } from "../src/countersign-transfer.ts";
 import { createPaymentGate } from "../src/payment-gate.ts";
+import { DEFAULT_COUNTERSIGN_METER, quoteCountersign } from "../src/payment-meter.ts";
 import { openVerdictLog } from "../src/verdict-log.ts";
 import { generateHcs14Aid } from "../src/hcs14.ts";
 
@@ -1610,7 +1611,7 @@ test("GET /.well-known/agent.json publishes the configured public review endpoin
           uri: "https://www.x402.org/",
           description: "x402 payment required for each authorization review; settled through Blocky402.",
           required: true,
-          params: { network: "hedera:testnet", asset: "0.0.0", priceTinybars: "2000000" },
+          params: { network: "hedera:testnet", asset: "0.0.0", priceTinybars: "2000000", priceAppliesTo: "/review", countersignMeter: DEFAULT_COUNTERSIGN_METER },
         }],
       },
       tenantCount: 1,
@@ -1689,23 +1690,27 @@ async function countersignHarness(t: TestContext) {
       return { success: true, payer: "0.0.8001", transaction: "0.0.8001@1788509000.000000001", network: "hedera:testnet" };
     },
   });
-  const challenge = await state.dependencies.paymentGate.review(undefined, "/countersign");
-  assert.ok(!challenge.paid);
-  const required = decodePaymentRequiredHeader(challenge.headers["PAYMENT-REQUIRED"]);
-  assert.equal(required.resource?.url, "https://guard.example/countersign");
   const payer = PrivateKey.generateED25519();
-  const paymentTransaction = await new TransferTransaction()
-    .setTransactionId(TransactionId.fromString("0.0.8001@1788509000.000000001"))
-    .setNodeAccountIds([AccountId.fromString("0.0.3")])
-    .addHbarTransfer("0.0.8001", Hbar.fromTinybars(-1000000))
-    .addHbarTransfer("0.0.9001", Hbar.fromTinybars(1000000))
-    .freeze().sign(payer);
-  const headers = { "payment-signature": encodePaymentSignatureHeader({
-    x402Version: 2, resource: required.resource, accepted: required.accepts[0],
-    payload: { transaction: Buffer.from(paymentTransaction.toBytes()).toString("base64") },
-  }) };
+  async function paymentHeaders(bytes: string, path: "/review" | "/countersign" = "/countersign") {
+    const challenge = await state.dependencies.paymentGate.review(undefined, path, bytes);
+    assert.ok(!challenge.paid);
+    const required = decodePaymentRequiredHeader(challenge.headers["PAYMENT-REQUIRED"]);
+    assert.equal(required.resource?.url, `https://guard.example${path}`);
+    const amount = BigInt(required.accepts[0].amount);
+    const paymentTransaction = await new TransferTransaction()
+      .setTransactionId(TransactionId.fromString("0.0.8001@1788509000.000000001"))
+      .setNodeAccountIds([AccountId.fromString("0.0.3")])
+      .addHbarTransfer("0.0.8001", Hbar.fromTinybars((-amount).toString()))
+      .addHbarTransfer("0.0.9001", Hbar.fromTinybars(amount.toString()))
+      .freeze().sign(payer);
+    return { "payment-signature": encodePaymentSignatureHeader({
+      x402Version: 2, resource: required.resource, accepted: required.accepts[0],
+      payload: { transaction: Buffer.from(paymentTransaction.toBytes()).toString("base64") },
+    }) };
+  }
+  const headers = await paymentHeaders(transactionBase64);
   const body = { tenantId: mandate.tenantId, mandateEnvelope: signedMandateEnvelope(), transactionBase64 };
-  return { ...state, body, headers, messages, databasePath, reservation };
+  return { ...state, body, headers, paymentHeaders, messages, databasePath, reservation };
 }
 
 test("POST /countersign challenges unpaid requests before authorization, reservation or signing", async (t) => {
@@ -1717,6 +1722,45 @@ test("POST /countersign challenges unpaid requests before authorization, reserva
   assert.equal(json.transactionBase64, undefined);
   assert.deepEqual(state.events, []);
   assert.deepEqual(state.messages, []);
+});
+
+test("POST /countersign publishes reproducible metered 402 quotes for two request sizes", async (t) => {
+  const state = await countersignHarness(t);
+  const larger = await new TransferTransaction()
+    .setTransactionId(TransactionId.fromString("0.0.4001@1788509000.000000000"))
+    .setNodeAccountIds([AccountId.fromString("0.0.3"), AccountId.fromString("0.0.4")])
+    .setMaxTransactionFee(Hbar.fromTinybars("100000000"))
+    .addHbarTransfer("0.0.1001", Hbar.fromTinybars(-100))
+    .addHbarTransfer("0.0.1002", Hbar.fromTinybars(100))
+    .freeze().sign(agentPrivateKey);
+  const amounts: bigint[] = [];
+  state.dependencies.reviewObserver = { onReviewCheck() { assert.fail("unpaid authorization"); } };
+  for (const transactionBase64 of [state.body.transactionBase64, Buffer.from(larger.toBytes()).toString("base64")]) {
+    const body = { ...state.body, transactionBase64 };
+    const { response } = await postReview(state.dependencies, body, {}, "/countersign");
+    assert.equal(response.status, 402);
+    const required = decodePaymentRequiredHeader(response.headers.get("payment-required")!);
+    const requirements = required.accepts[0];
+    assert.deepEqual(requirements.extra?.meter, quoteCountersign(transactionBase64));
+    assert.equal(requirements.amount, quoteCountersign(transactionBase64).amountTinybars);
+    amounts.push(BigInt(requirements.amount));
+    t.diagnostic(JSON.stringify({ status: response.status, requestBytes: Buffer.byteLength(JSON.stringify(body)), ...required }));
+  }
+  assert.ok(amounts[1] > amounts[0]);
+  assert.deepEqual(state.events, []);
+  assert.deepEqual(state.messages, []);
+});
+
+test("POST /countersign refuses a smaller quote before authorization, reservation or signing", async (t) => {
+  const state = await countersignHarness(t);
+  const headers = await state.paymentHeaders("!");
+  state.dependencies.reviewObserver = { onReviewCheck() { assert.fail("underpaid authorization"); } };
+  const { response, json } = await postReview(state.dependencies, state.body, headers, "/countersign");
+  assert.equal(response.status, 402);
+  assert.equal(json.transactionBase64, undefined);
+  assert.deepEqual(state.events, []);
+  assert.deepEqual(state.messages, []);
+  assert.equal(getMandateReviewState(state.databasePath, state.reservation).status, "absent");
 });
 
 test("POST /countersign settles, reserves before the real guard signature, and records the reviewed transfer", async (t) => {
@@ -1770,7 +1814,8 @@ for (const refusal of ["cap", "malformed bytes"] as const) {
       : "transaction bytes are canonical nonempty base64";
     if (refusal === "cap") body.mandateEnvelope = signedMandateEnvelope({ ...mandate, maxAmountTinybars: "1" });
     if (refusal === "malformed bytes") body.transactionBase64 = "!";
-    const { response, json } = await postReview(state.dependencies, body, state.headers, "/countersign");
+    const headers = await state.paymentHeaders(body.transactionBase64);
+    const { response, json } = await postReview(state.dependencies, body, headers, "/countersign");
     assert.equal(response.status, 200);
     assert.equal(json.outcome, "refused");
     assert.equal(json.invariant, invariant);
@@ -1871,7 +1916,8 @@ test("POST /countersign logs a paid refusal even when the decoded transaction ID
   signed.sigMap = { sigPair: [agentKey._toProtobufSignature(agentPrivateKey.sign(signed.bodyBytes))] };
   list.transactionList[0].signedTransactionBytes = proto.SignedTransaction.encode(signed).finish();
   const transactionBase64 = Buffer.from(proto.TransactionList.encode(list).finish()).toString("base64");
-  const { response, json } = await postReview(state.dependencies, { ...state.body, transactionBase64 }, state.headers, "/countersign");
+  const headers = await state.paymentHeaders(transactionBase64);
+  const { response, json } = await postReview(state.dependencies, { ...state.body, transactionBase64 }, headers, "/countersign");
   assert.equal(response.status, 200);
   assert.equal(json.outcome, "refused");
   assert.equal(json.invariant, "transaction validity fields are present and valid");
@@ -1979,6 +2025,7 @@ for (const failure of ["HCS", "completion"] as const) {
 for (const failure of ["receipt", "HCS", "completion"] as const) {
   test(`INVARIANT: review ${failure} failure after consensus signing cannot publish a refusal on retry`, async (t) => {
     const state = await countersignHarness(t);
+    const headers = await state.paymentHeaders(state.body.transactionBase64, "/review");
     let signed = false;
     state.dependencies.resolveSchedule = async () => resolvedSchedule(schedule(signed ? {
       signers: new KeyList([agentKey, guardKey]),
@@ -1993,11 +2040,11 @@ for (const failure of ["receipt", "HCS", "completion"] as const) {
     } else if (failure === "completion") {
       t.mock.method(state.dependencies, "completeNonce", () => { throw new Error("storage unavailable"); });
     }
-    const first = await postReview(state.dependencies, requestBody(), state.headers);
+    const first = await postReview(state.dependencies, requestBody(), headers);
     assert.equal(first.response.status, 500);
     assert.equal(signed, true);
     t.mock.restoreAll();
-    const retry = await postReview(state.dependencies, requestBody(), state.headers);
+    const retry = await postReview(state.dependencies, requestBody(), headers);
     assert.equal(retry.response.status, 503);
     assert.equal(retry.response.headers.get("retry-after"), "1");
     assert.equal(retry.json.outcome, undefined);

@@ -15,6 +15,7 @@ import {
   type ExactHederaPayloadV2,
 } from "@x402/hedera";
 import { ExactHederaScheme } from "@x402/hedera/exact/server";
+import { DEFAULT_COUNTERSIGN_METER, quoteCountersign, validateCountersignMeter, type CountersignMeterConfig } from "./payment-meter.ts";
 
 const FACILITATOR_URL = "https://api.testnet.blocky402.com";
 const HEDERA_TESTNET = "hedera:testnet";
@@ -39,6 +40,7 @@ export interface TreasuryAuthorization {
 export interface PaymentGateConfig {
   readonly resourceUrl: string;
   readonly priceTinybars: string;
+  readonly countersignMeter?: CountersignMeterConfig;
   readonly operationalAccount: OperationalPaymentAccount;
   readonly treasuryAuthorizations: readonly TreasuryAuthorization[];
 }
@@ -57,7 +59,7 @@ export type PaymentGateOutcome =
     };
 
 export interface PaymentGate {
-  review(paymentSignatureHeader?: string, path?: "/review" | "/countersign"): Promise<PaymentGateOutcome>;
+  review(paymentSignatureHeader?: string, path?: "/review" | "/countersign", transactionBase64?: string): Promise<PaymentGateOutcome>;
 }
 
 function requireNumericAccountId(value: string, field: string): void {
@@ -127,6 +129,7 @@ function requestAdapter(
   resourceUrl: string,
   paymentSignatureHeader?: string,
   path = "/review",
+  transactionBase64?: string,
 ): HTTPAdapter {
   return {
     getHeader(name: string): string | undefined {
@@ -139,6 +142,7 @@ function requestAdapter(
     getUrl: () => resourceUrl,
     getAcceptHeader: () => "application/json",
     getUserAgent: () => "Countersign",
+    getBody: () => transactionBase64,
   };
 }
 
@@ -214,6 +218,8 @@ export async function createPaymentGate(
   }),
 ): Promise<PaymentGate> {
   validateConfig(config);
+  const countersignMeter = { ...(config.countersignMeter ?? DEFAULT_COUNTERSIGN_METER) };
+  validateCountersignMeter(countersignMeter);
 
   const resourceServer = new x402ResourceServer(facilitatorClient).register(
     HEDERA_TESTNET,
@@ -225,14 +231,21 @@ export async function createPaymentGate(
         scheme: "exact",
         network: HEDERA_TESTNET,
         payTo: config.operationalAccount.accountId,
-        price: {
+        price: path === "/countersign" ? (context) => {
+          const transactionBase64 = context.adapter.getBody?.();
+          if (typeof transactionBase64 !== "string") {
+            throw new Error("countersign quote requires transactionBase64");
+          }
+          const meter = quoteCountersign(transactionBase64, countersignMeter);
+          return { asset: HBAR_ASSET_ID, amount: meter.amountTinybars, extra: { meter } };
+        } : {
           asset: HBAR_ASSET_ID,
           amount: config.priceTinybars,
         },
         extra: { paymentFlow: "upfront" },
       },
       resource: path === "/review" ? config.resourceUrl : new URL(path, config.resourceUrl).href,
-      description: "Countersign schedule review check",
+      description: path === "/review" ? "Countersign schedule review check" : "Countersign transaction authorization, metered by decoded bytes and transfer adjustments",
       mimeType: "application/json",
       serviceName: "Countersign",
     } satisfies RouteConfig,
@@ -244,6 +257,7 @@ export async function createPaymentGate(
     async review(
       paymentSignatureHeader?: string,
       path: "/review" | "/countersign" = "/review",
+      transactionBase64?: string,
     ): Promise<PaymentGateOutcome> {
       const acceptedPaymentHeader =
         paymentSignatureHeader !== undefined &&
@@ -253,7 +267,7 @@ export async function createPaymentGate(
           ? undefined
           : paymentSignatureHeader;
       const result = await httpServer.processHTTPRequest({
-        adapter: requestAdapter(path === "/review" ? config.resourceUrl : new URL(path, config.resourceUrl).href, acceptedPaymentHeader, path),
+        adapter: requestAdapter(path === "/review" ? config.resourceUrl : new URL(path, config.resourceUrl).href, acceptedPaymentHeader, path, transactionBase64),
         path,
         method: "POST",
         paymentHeader: acceptedPaymentHeader,
