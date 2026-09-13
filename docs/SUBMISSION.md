@@ -26,7 +26,8 @@ price in HBAR, and settlement goes through the Blocky402 x402 facilitator on Hed
 testnet.
 
 Only after settlement does the guard perform consensus authorization work. It resolves the ScheduleID from consensus —
-it never trusts a summary the caller sent it — and checks 48 decoded fields against a
+it never trusts a summary the caller sent it — and checks every decoded field in the
+supported transfer and schedule envelope against a
 mandate the treasury owner signed: recipient allowlist, amount cap, asset, fee, expiry, who
 created the schedule, who pays for it, and that its own key is not already on it. If every
 check passes it adds its signature and Hedera executes the transfer. If one fails it
@@ -42,7 +43,7 @@ code.
 
 The guard is live at https://countersign.gudman.xyz. `GET /guard` returns its public key
 and HCS-14 identifier for free, so a caller can identify the service before paying it, and
-`POST /review` is the paid endpoint. The approved and refused runs above were made from a
+`POST /review` is the paid endpoint. The approved and refused runs linked from the repository were made from a
 separate machine against that endpoint.
 
 Anyone can put a proposal to that live guard at
@@ -109,6 +110,39 @@ regression tests now run against verbatim mirror-node responses captured from th
 
 The build briefs each task was run from, and a full AI usage disclosure, are published in
 the repository.
+
+## What else it does
+
+**The review is metered, not a flat fee.** `POST /countersign` quotes 1,000,000 tinybars base plus
+102,400 per 1,024 decoded bytes and 10,000 per transfer adjustment, with a 1,000,000 floor and a
+10,000,000 ceiling. The challenge publishes the whole calculation, so a caller can reproduce the
+quote and check what they were charged. `POST /review` stays flat because the request carries only
+a ScheduleID and the body is fetched from consensus afterwards, so there is nothing to meter at
+quote time.
+
+**It authorizes HTS tokens, not only HBAR.** The transfer path approves a fungible token only when
+consensus shows no custom fees and an immutable fee schedule. Exercised live on 2026-09-13: transfer
+`0.0.10502370-1789298664-120630881` moved a token out of the guarded treasury. The x402 review fee
+itself remained HBAR, so this is HTS in the guarded transfer, not as the settlement currency. The
+schedule path still refuses every token proposal.
+
+**Recurring payments are built from single-use authorizations.** Mandates permit one approval each,
+so recurrence is a fixed number of pre-authorised occurrences spent on a timer rather than a standing
+allowance. Three live occurrences on 2026-09-13 — schedules `0.0.10522683`, `0.0.10522695` and
+`0.0.10522705`, each executed with both signatures, roughly 35 seconds apart. Every occurrence is
+reviewed separately and the total can never exceed what the owner signed. This is a process timer,
+not a Hedera-native recurrence instruction.
+
+**An A2A adapter exposes the guard as a task.** A task submitted without payment returns the same
+x402 terms the HTTP route quotes; the counterparty settles and the task completes with the verdict.
+It is a standalone adapter, not wired into the deployed guard, and its end-to-end demonstration runs
+against offline Hedera and facilitator responses rather than a live paid run. It demonstrates task
+settlement over A2A, not open-ended negotiation.
+
+**Not claimed: agent discovery.** Registration with a public agent registry was attempted and
+rejected because the service does not fit its categories, and we declined to reclassify a
+deterministic authorization service as an AI agent to get listed.
+
 
 ## Links
 
