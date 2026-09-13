@@ -360,6 +360,85 @@ test("A2A malformed upstream verdict becomes a failed task with its settlement r
   assert.deepEqual(result.result.status.message.metadata["x402.payment.receipts"], [state.receipt]);
 });
 
+test("A2A rejects invalid upstream payment evidence without completing the task", async (t) => {
+  const state = await harness(t);
+  const receipt = state.receipt;
+  const cases: {
+    name: string;
+    receipt: unknown;
+    verdict?: Record<string, unknown>;
+    unpaid?: boolean;
+    retainReceipt?: boolean;
+  }[] = [
+    ...["approved", "refused"].map((outcome) => ({
+      name: `${outcome} verdict settlementId differs from receipt transaction`, receipt, retainReceipt: true,
+      verdict: { outcome, settlementId: "0.0.7162784@1788537600.000000002" },
+    })),
+    { name: "verdict without a payment-signature header", receipt, unpaid: true, retainReceipt: true },
+    { name: "verdict with zero receipts", receipt: undefined },
+    { name: "verdict with an unsuccessful receipt", receipt: { ...receipt, success: false }, retainReceipt: true },
+    { name: "verdict with an unsupported outcome", receipt, retainReceipt: true,
+      verdict: { outcome: "pending", settlementId: receipt.transaction } },
+    { name: "verdict missing settlementId", receipt, retainReceipt: true, verdict: { outcome: "approved" } },
+    { name: "verdict with a non-string settlementId", receipt, retainReceipt: true,
+      verdict: { outcome: "approved", settlementId: 123 } },
+    { name: "null receipt", receipt: null },
+    { name: "string receipt", receipt: "receipt" },
+    { name: "numeric receipt", receipt: 123 },
+    { name: "boolean receipt", receipt: true },
+    { name: "empty receipt array", receipt: [] },
+    { name: "multiple receipts in the payment-response header", receipt: [receipt, { ...receipt, transaction: "0.0.7162784@1788537600.000000002" }] },
+    { name: "receipt missing all required fields", receipt: {} },
+    { name: "receipt missing success", receipt: { transaction: receipt.transaction, network: receipt.network } },
+    { name: "receipt missing transaction", receipt: { success: true, network: receipt.network } },
+    { name: "receipt missing network", receipt: { success: true, transaction: receipt.transaction } },
+    { name: "receipt with non-boolean success", receipt: { ...receipt, success: "true" } },
+    { name: "receipt with non-string transaction", receipt: { ...receipt, transaction: 123 } },
+    { name: "receipt with non-string network", receipt: { ...receipt, network: 123 } },
+    { name: "successful receipt with an empty transaction", receipt: { ...receipt, transaction: "" },
+      verdict: { outcome: "approved", settlementId: "" } },
+  ];
+  for (const entry of cases) {
+    await t.test(entry.name, async (t) => {
+      let message: unknown = state.message();
+      let task: A2aTask | undefined;
+      if (!entry.unpaid) {
+        const reply = await state.rpc("message/send", { message });
+        assert.equal(reply.error, undefined);
+        task = reply.result;
+        assert.equal(task.status.state, "input-required");
+        message = await state.submitPayment(task);
+      }
+      const originalFetch = globalThis.fetch;
+      const paymentHeaders: (string | null)[] = [];
+      t.mock.method(globalThis, "fetch", async (url: string | URL | Request, init?: RequestInit) => {
+        if (String(url) !== `${state.guardOrigin}/review`) return originalFetch(url, init);
+        paymentHeaders.push(new Headers(init?.headers).get("payment-signature"));
+        return Response.json(entry.verdict ?? { outcome: "approved", settlementId: receipt.transaction }, {
+          headers: entry.receipt === undefined ? {} : {
+            "payment-response": Buffer.from(JSON.stringify(entry.receipt)).toString("base64"),
+          },
+        });
+      });
+      const reply = await state.rpc("message/send", { message });
+      assert.equal(paymentHeaders.length, 1);
+      if (entry.unpaid) assert.equal(paymentHeaders[0], null);
+      else assert.ok(paymentHeaders[0]);
+      assert.equal(reply.error, undefined);
+      assert.equal(reply.result.status.state, "failed");
+      assert.equal(reply.result.artifacts, undefined);
+      assert.equal(reply.result.status.message.metadata["x402.payment.error"], "GUARD_RESPONSE_UNAVAILABLE");
+      assert.deepEqual(reply.result.status.message.metadata["x402.payment.receipts"], entry.retainReceipt ? [entry.receipt] : []);
+      if (task !== undefined) {
+        assert.equal(reply.result.id, task.id);
+        assert.equal(reply.result.contextId, task.contextId);
+      }
+      assert.deepEqual((await state.rpc("tasks/get", { id: reply.result.id })).result, reply.result);
+      assert.deepEqual(state.events, []);
+    });
+  }
+});
+
 test("A2A rejects oversized review and JSON-RPC bodies before payment", async (t) => {
   const state = await harness(t);
   assert.equal((await state.rpc("message/send", { message: state.message({ text: "x".repeat(16 * 1024) }) })).error?.code, -32602);
