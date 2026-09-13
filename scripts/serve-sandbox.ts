@@ -286,9 +286,13 @@ async function main() {
   const value: unknown = JSON.parse(readFileSync(resolve("var", "sandbox-mandates.json"), "utf8"));
   if (!Array.isArray(value)) throw new Error("sandbox mandates must be an array");
   const envelopes = value.map(parseMandateEnvelope);
+    // Nonces must be contiguous and ascending, but need not start at 1: the guard keeps an
+    // ascending high-water mark per tenant, so a replacement mandate set has to begin above
+    // every nonce it has already approved.
+    const firstNonce = BigInt(envelopes[0]?.mandate.nonce ?? "1");
   for (const [index, envelope] of envelopes.entries()) {
     const mandate = envelope.mandate;
-    if (mandate.nonce !== String(index + 1) || mandate.tenantId !== config.tenantId ||
+    if (BigInt(mandate.nonce) !== firstNonce + BigInt(index) || mandate.tenantId !== config.tenantId ||
         mandate.treasuryAccountId !== config.treasury.toString() || mandate.schemaVersion !== undefined ||
         mandate.maxAmountTinybars !== "50000000" || mandate.recipientAllowlist.length !== 1 ||
         mandate.recipientAllowlist[0] !== config.vendor.toString()) throw new Error("sandbox mandate does not match the provisioned authorization policy");

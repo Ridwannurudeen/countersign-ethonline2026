@@ -47,12 +47,31 @@ function main(): void {
     );
   }
   const { values } = parseArgs({
-    options: { count: { type: "string", default: "200" } },
+    options: {
+      count: { type: "string", default: "200" },
+      "start-nonce": { type: "string", default: "1" },
+      "validity-hours": { type: "string", default: "72" },
+    },
   });
   const count = Number(values.count);
   if (!/^[1-9][0-9]*$/.test(values.count!) || !Number.isSafeInteger(count)) {
     throw new Error(
       "--count must be a positive safe integer in minimal decimal form",
+    );
+  }
+  // The guard keeps an ascending high-water mark per tenant, so a replacement set must start
+  // above every nonce the guard has already approved. Re-signing from 1 turns the first
+  // envelopes into paid refusals for the recipient the owner actually allowed.
+  const startNonce = Number(values["start-nonce"]);
+  if (!/^[1-9][0-9]*$/.test(values["start-nonce"]!) || !Number.isSafeInteger(startNonce)) {
+    throw new Error(
+      "--start-nonce must be a positive safe integer in minimal decimal form",
+    );
+  }
+  const validityHours = Number(values["validity-hours"]);
+  if (!/^[1-9][0-9]*$/.test(values["validity-hours"]!) || !Number.isSafeInteger(validityHours)) {
+    throw new Error(
+      "--validity-hours must be a positive safe integer in minimal decimal form",
     );
   }
   const outputPath = resolve("var", "sandbox-mandates.json");
@@ -63,7 +82,7 @@ function main(): void {
   }
   const nowEpochSeconds = Math.floor(Date.now() / 1_000);
   const envelopes: MandateEnvelope[] = [];
-  for (let nonce = 1; nonce <= count; nonce += 1) {
+  for (let nonce = startNonce; nonce < startNonce + count; nonce += 1) {
     const mandate: Mandate = {
       tenantId: "sandbox",
       nonce: nonce.toString(),
@@ -71,7 +90,7 @@ function main(): void {
       recipientAllowlist: [vendorAccountId],
       maxAmountTinybars: "50000000",
       validFromEpochSeconds: nowEpochSeconds.toString(),
-      expiresAtEpochSeconds: (nowEpochSeconds + 72 * 60 * 60).toString(),
+      expiresAtEpochSeconds: (nowEpochSeconds + validityHours * 60 * 60).toString(),
     };
     const signature = Buffer.from(
       ownerPrivateKey.sign(canonicalMandateBytes(mandate)),

@@ -266,3 +266,25 @@ test("clientAddress keeps the rate limit per visitor behind the reverse proxy", 
   }
   assert.equal(clientAddress(undefined, undefined), "unknown");
 });
+
+test("sandbox mandates may start above the guard's high-water mark, but must stay contiguous", async t => {
+  // A replacement set cannot restart at nonce 1: the guard keeps an ascending high-water mark
+  // per tenant, so re-signing from 1 turns the first envelopes into paid refusals for the
+  // recipient the owner actually allowed.
+  const { sandbox, envelopes } = fixture(t, 3);
+  const shifted = envelopes.map((envelope, index) => ({
+    ...envelope,
+    mandate: { ...envelope.mandate, nonce: String(1001 + index) },
+  }));
+  assert.equal(shifted[0]!.mandate.nonce, "1001");
+  assert.equal(shifted.at(-1)!.mandate.nonce, String(1000 + shifted.length));
+  const first = BigInt(shifted[0]!.mandate.nonce);
+  for (const [index, envelope] of shifted.entries()) {
+    assert.equal(BigInt(envelope.mandate.nonce), first + BigInt(index));
+  }
+  const gap = shifted.map((envelope, index) =>
+    index === 1 ? { ...envelope, mandate: { ...envelope.mandate, nonce: "9999" } } : envelope);
+  assert.notEqual(BigInt(gap[1]!.mandate.nonce), first + 1n);
+  assert.equal((await post(sandbox)).status, 202);
+  await sandbox.idle();
+});
