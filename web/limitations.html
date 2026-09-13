@@ -854,7 +854,7 @@
       </section>
 
       <section class="section" aria-labelledby="list-title">
-        <h2 id="list-title" class="eyebrow" style="max-width:none">Fifteen limits, 2026-09-12</h2>
+        <h2 id="list-title" class="eyebrow" style="max-width:none">Twenty-three limits, 2026-09-13</h2>
         <ol class="limits">
           <li><div>
             <h3>Testnet only</h3>
@@ -898,7 +898,7 @@
           </div></li>
           <li><div>
             <h3>One mandate per approval</h3>
-            <p>Mandates are single-use. A treasury that makes ten transfers needs ten owner-signed mandates with increasing nonces. There is no standing allowance.</p>
+            <p>Mandates permit a single approval. A treasury that makes ten transfers needs ten owner-signed mandates with increasing nonces. There is no standing allowance.</p>
             <p class="next"><strong>Next</strong> a bounded multi-use mandate with a running spend counter, and its replay tests.</p>
           </div></li>
           <li><div>
@@ -930,6 +930,46 @@
             <h3>No independent security audit</h3>
             <p>The code has been reviewed and mutation-tested internally, and the invariant-to-test map and threat model are published. No third party has audited it. The offline suite is 570 TypeScript and 13 Python tests as of 2026-09-13, and it covers the validator, not the deployment.</p>
             <p class="next"><strong>Next</strong> an external review of <code>src/review-schedule.ts</code>, <code>src/countersign-transfer.ts</code> and <code>src/payment-gate.ts</code> against <a href="https://github.com/Ridwannurudeen/countersign-ethonline2026/blob/main/THREAT_MODEL.md" rel="noreferrer">the threat model</a>.</p>
+          </div></li>
+          <li><div>
+            <h3>Replay protection is one SQLite file</h3>
+            <p><code>var/hosted-guard.sqlite</code> holds every tenant's nonce high-water mark through <code>src/replay-store.ts</code>. It has no backup and no on-chain anchor. Losing that file would let an unexpired approved mandate be approved a second time.</p>
+            <p class="next"><strong>Next</strong> a tested backup and recovery procedure that preserves the latest reservations, and an independent anchor for nonce continuity.</p>
+          </div></li>
+          <li><div>
+            <h3>The guard trusts its own wall clock</h3>
+            <p>Mandate validity on both routes uses <code>Date.now()</code> in <code>src/server.ts</code>. Consensus time is never consulted for that decision, so host clock skew changes which mandates are authorized.</p>
+            <p class="next"><strong>Next</strong> a consensus-time validity check with explicit handling of unavailable time evidence.</p>
+          </div></li>
+          <li><div>
+            <h3>One facilitator</h3>
+            <p><code>src/payment-gate.ts</code> hardcodes <code>https://api.testnet.blocky402.com</code>. If it is down, paid reviews and purchases stop. Its settlement ID is recorded to HCS without an independent mirror-node settlement check.</p>
+            <p class="next"><strong>Next</strong> an independently verified settlement record and another compatible facilitator whose payment behavior has been tested.</p>
+          </div></li>
+          <li><div>
+            <h3>The sandbox treasury has no key separation</h3>
+            <p>The sandbox agent key and the guard key are on the same host, so that treasury's entire <code>2-of[agent, guard]</code> authorization branch is one machine. This does not apply to the hosted treasury, whose owner and agent keys are off-host.</p>
+            <p class="next"><strong>Next</strong> move the sandbox agent key to a separate host with an independent authorization boundary.</p>
+          </div></li>
+          <li><div>
+            <h3>Guard key rotation breaks verdict continuity</h3>
+            <p>Verdict topics carry the guard key as submit key and have no admin key, as configured in <code>src/verdict-log.ts</code>. A replacement guard key cannot write to those topics, and every tenant needs an owner-signed account update to authorize it.</p>
+            <p class="next"><strong>Next</strong> a rotation procedure that links old and new verdict topics and coordinates every tenant's owner-signed account update.</p>
+          </div></li>
+          <li><div>
+            <h3>A testnet reset erases every link</h3>
+            <p>Quarterly testnet resets remove the accounts, topics and schedules cited throughout this site and the README. These live evidence links are not permanent archives.</p>
+            <p class="next"><strong>Next</strong> archive the evidence before resets and clearly identify the network period behind every recorded run.</p>
+          </div></li>
+          <li><div>
+            <h3>On the buyer path the mandate binds payee and cap only</h3>
+            <p>The authorization in <code>src/countersign-transfer.ts</code> constrains the payee and transfer cap. It does not bind the resource, the quoted price or delivery. An authorized transfer does not prove that the seller delivered what the agent requested.</p>
+            <p class="next"><strong>Next</strong> owner-signed resource and price terms, with independently checkable delivery evidence.</p>
+          </div></li>
+          <li><div>
+            <h3>A refused mandate stays usable until it expires</h3>
+            <p>Refusals do not reserve the nonce. Single-use means single-approval: a refused mandate may be presented again until it expires, subject to the tenant's nonce high-water mark.</p>
+            <p class="next"><strong>Next</strong> an explicit owner-authorized revocation mechanism if a refusal must end the mandate's validity.</p>
           </div></li>
         </ol>
       </section>

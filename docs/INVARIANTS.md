@@ -2,8 +2,9 @@
 
 Each row maps one fail-closed invariant to the mechanism that enforces it and one exact
 test title in the current suite. The roadmap's eight adversarial cases are labeled
-explicitly. These are offline proofs: the repository has no Hedera credentials, and none
-of these controls has been exercised against the live network.
+explicitly. These tests are offline proofs. Selected authorization controls have also
+been exercised on live Hedera testnet; see the mirror-node evidence in [README.md](../README.md#live-evidence).
+Runtime credentials are kept in gitignored configuration, outside tracked source.
 
 ## Mandate
 
@@ -118,5 +119,6 @@ of these controls has been exercised against the live network.
 - HTS transfer structure is validated, but approval remains disabled. Token custom-fee
   state is outside the current schedule-resolution context and every otherwise valid HTS
   transfer is refused until empty, immutable fees can be verified from consensus.
-- These invariants are covered by the offline Node test suite, but none has been exercised against
-  the live Hedera network. The repository has no Hedera credentials.
+- These invariants are covered by the offline Node test suite. Selected authorization controls
+  also have live Hedera testnet evidence linked in [README.md](../README.md#live-evidence);
+  those runs do not establish live coverage of every invariant. Runtime credentials are gitignored.
