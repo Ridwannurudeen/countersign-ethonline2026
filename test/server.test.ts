@@ -7,7 +7,7 @@ import { DatabaseSync } from "node:sqlite";
 import test, { type TestContext } from "node:test";
 
 import { proto } from "@hiero-ledger/proto";
-import { AccountId, Client, Hbar, KeyList, PrivateKey, PublicKey, TransactionId, TransferTransaction } from "@hiero-ledger/sdk";
+import { AccountId, Client, Hbar, KeyList, PrecheckStatusError, PrivateKey, PublicKey, Status, TransactionId, TransferTransaction } from "@hiero-ledger/sdk";
 import { decodePaymentRequiredHeader, encodePaymentSignatureHeader } from "@x402/core/http";
 
 import {
@@ -588,6 +588,53 @@ test("POST /review retains settlement headers when consensus resolution errors",
   assert.equal(response.headers.get("payment-response"), "settled");
   assert.deepEqual(json, { error: "internal server error" });
   assert.deepEqual(state.events, ["payment", "lookup", "resolve"]);
+});
+
+test("POST /review records a paid refusal for a missing or expired schedule without reserving", async () => {
+  const state = harness({
+    async resolveSchedule() {
+      state.events.push("resolve");
+      throw new PrecheckStatusError({
+        status: Status.InvalidScheduleId,
+        transactionId: TransactionId.fromString("0.0.3001@1788509000.000000000"),
+        nodeId: AccountId.fromString("0.0.3"),
+        contractFunctionResult: null,
+      });
+    },
+  });
+  const { response, json } = await postReview(state.dependencies, requestBody());
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("payment-response"), "settled");
+  assert.equal(json.outcome, "refused");
+  assert.equal(json.reason, "schedule does not exist or has expired");
+  assert.equal(json.mirrorNodeUrl, "https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.9001/messages/4");
+  assert.deepEqual(state.events, ["payment", "lookup", "resolve", "record"]);
+  assert.equal(state.verdicts.length, 1);
+  assert.equal(state.verdicts[0].outcome, "refused");
+  assert.equal(state.verdicts[0].scheduleId, "0.0.7001");
+  assert.equal(state.verdicts[0].mandateDigest, digest);
+  assert.equal(state.verdicts[0].settlementId, "0.0.8001@1788509000.000000001");
+  assert.deepEqual(state.completions, []);
+});
+
+test("POST /review preserves a consensus precheck outage without recording a policy refusal", async () => {
+  const state = harness({
+    async resolveSchedule() {
+      state.events.push("resolve");
+      throw new PrecheckStatusError({
+        status: Status.Busy,
+        transactionId: TransactionId.fromString("0.0.3001@1788509000.000000000"),
+        nodeId: AccountId.fromString("0.0.3"),
+        contractFunctionResult: null,
+      });
+    },
+  });
+  const { response, json } = await postReview(state.dependencies, requestBody());
+  assert.equal(response.status, 500);
+  assert.equal(response.headers.get("payment-response"), "settled");
+  assert.deepEqual(json, { error: "internal server error" });
+  assert.deepEqual(state.events, ["payment", "lookup", "resolve"]);
+  assert.deepEqual(state.verdicts, []);
 });
 
 test("POST /review records a paid authorization refusal without reserving", async () => {
@@ -1699,15 +1746,29 @@ test("POST /countersign settles, reserves before the real guard signature, and r
   assert.ok(guardKey.verify(after.bodyBytes, after.sigMap!.sigPair![1].ed25519!));
 });
 
-for (const refusal of ["cap", "owner signature", "malformed bytes"] as const) {
+test("POST /countersign rejects an invalid owner signature before payment or verdict recording", async (t) => {
+  const state = await countersignHarness(t);
+  const payment = t.mock.method(state.dependencies.paymentGate, "review");
+  const { response, json } = await postReview(state.dependencies, {
+    ...state.body,
+    mandateEnvelope: { ...state.body.mandateEnvelope, signature: Buffer.alloc(64).toString("base64url") },
+  }, state.headers, "/countersign");
+  assert.equal(response.status, 401);
+  assert.deepEqual(json, { error: "mandate signature is invalid" });
+  assert.equal(response.headers.get("payment-response"), null);
+  assert.equal(payment.mock.callCount(), 0);
+  assert.deepEqual(state.events, []);
+  assert.deepEqual(state.messages, []);
+  assert.equal(getMandateReviewState(state.databasePath, state.reservation).status, "absent");
+});
+
+for (const refusal of ["cap", "malformed bytes"] as const) {
   test(`POST /countersign delivers a paid ${refusal} refusal with independent HCS evidence`, async (t) => {
     const state = await countersignHarness(t);
     const body = { ...state.body };
     const invariant = refusal === "cap" ? "transfer amount is within the mandate cap"
-      : refusal === "owner signature" ? "mandate signature is valid for the configured owner"
       : "transaction bytes are canonical nonempty base64";
     if (refusal === "cap") body.mandateEnvelope = signedMandateEnvelope({ ...mandate, maxAmountTinybars: "1" });
-    if (refusal === "owner signature") body.mandateEnvelope = { ...body.mandateEnvelope, signature: Buffer.alloc(64).toString("base64url") };
     if (refusal === "malformed bytes") body.transactionBase64 = "!";
     const { response, json } = await postReview(state.dependencies, body, state.headers, "/countersign");
     assert.equal(response.status, 200);
@@ -1837,12 +1898,15 @@ test("INVARIANT: countersign retries replay the persisted signature even after v
 test("INVARIANT: a completed countersign tuple still requires the owner's mandate signature", async (t) => {
   const state = await countersignHarness(t);
   await postReview(state.dependencies, state.body, state.headers, "/countersign");
+  const payment = t.mock.method(state.dependencies.paymentGate, "review");
   const body = {
     ...state.body,
     mandateEnvelope: { ...state.body.mandateEnvelope, signature: Buffer.alloc(64).toString("base64url") },
   };
   const retry = await postReview(state.dependencies, body, state.headers, "/countersign");
   assert.equal(retry.response.status, 401);
+  assert.equal(payment.mock.callCount(), 0);
+  assert.equal(retry.response.headers.get("payment-response"), null);
   assert.equal(retry.json.transactionBase64, undefined);
   assert.deepEqual(state.messages.map((message) => message.outcome), ["approved"]);
 });

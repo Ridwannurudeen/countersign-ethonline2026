@@ -8,10 +8,12 @@ import {
   Client,
   KeyList,
   NetworkVersionInfoQuery,
+  PrecheckStatusError,
   PublicKey,
   ScheduleId,
   ScheduleInfoQuery,
   ScheduleSignTransaction,
+  Status,
   TransactionId,
 } from "@hiero-ledger/sdk";
 
@@ -492,7 +494,24 @@ async function handleReviewRequest(
     return;
   }
 
-  const resolved = await dependencies.resolveSchedule(parsedRequest.scheduleId);
+  let resolved: ResolvedSchedule;
+  try {
+    resolved = await dependencies.resolveSchedule(parsedRequest.scheduleId);
+  } catch (error) {
+    if (!(error instanceof PrecheckStatusError) || error.status !== Status.InvalidScheduleId) {
+      throw error;
+    }
+    await recordAndRespond(
+      response,
+      dependencies,
+      parsedRequest,
+      digest,
+      payment.settlementId,
+      { outcome: "refused", reason: "schedule does not exist or has expired" },
+      payment.responseHeaders,
+    );
+    return;
+  }
   if (resolved.info.signers?.toArray().some(
     (key) => key instanceof PublicKey && key.equals(dependencies.guardPublicKey),
   )) {
@@ -646,6 +665,9 @@ async function handleCountersignRequest(
   if (tenant === undefined) {
     throw new RequestError(403, "mandate tenant is not authorized");
   }
+  if (!verifyMandateSignature(envelope, tenant.ownerPublicKey)) {
+    throw new RequestError(401, "mandate signature is invalid");
+  }
   const payment = await dependencies.paymentGate.review(paymentSignatureHeader(incoming), "/countersign");
   if (!payment.paid) {
     writeJson(response, payment.status, payment.body, payment.headers);
@@ -666,9 +688,6 @@ async function handleCountersignRequest(
   };
   const reviewState = await dependencies.lookupReviewState(reservation);
   if (reviewState.status !== "absent") {
-    if (!verifyMandateSignature(envelope, tenant.ownerPublicKey)) {
-      throw new RequestError(401, "mandate signature is invalid");
-    }
     if (reviewState.status === "pending") {
       writeJson(response, 503, { error: "mandate review is already pending" }, { "retry-after": "1" });
       return;
