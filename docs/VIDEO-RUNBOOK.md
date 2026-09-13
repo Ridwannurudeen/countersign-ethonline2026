@@ -8,9 +8,11 @@ build does not support.
 
 ETHGlobal rejects a video that breaks any of these:
 
-- **2 to 4 minutes.** Under two or over four is auto-rejected. (The Hedera track's own text
-  says "five minutes or less"; 2–4 satisfies both, so cut to 2–4 and do not rely on the
-  looser figure.)
+- **Under 4 minutes.** The upload is rejected at 4:00 or over. The Hedera track text says
+  "five minutes or less", but the submission upload enforces four, so four is the real limit.
+  Aim for 3:00 so an edit cannot push you over, and check the exported length before uploading.
+- **720p or higher.** The upload is rejected below it.
+- **Do not film the screen with a phone.** Screen-record on the computer.
 - **720p or higher.**
 - **Your real voice.** No text-to-speech, no AI voiceover.
 - **No sped-up footage.** Cutting between takes and between clips is fine; changing
