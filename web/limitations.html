@@ -2,8 +2,14 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%23172019'/><rect x='3' y='7' width='10' height='2' fill='%23145c43'/></svg>" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Countersign limitations</title>
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://countersign.gudman.xyz/limitations.html" />
+    <meta property="og:title" content="Countersign limitations" />
+    <meta property="og:description" content="What Countersign does not do today, with what would have to change for each limit." />
+    <meta name="twitter:card" content="summary" />
     <meta name="description" content="What Countersign does not do today, with what would have to change for each limit." />
     <style>
       :root {
@@ -801,10 +807,10 @@
         <nav class="site-nav" aria-label="Site">
           <ul>
             <li><a href="./index.html">Overview</a></li>
+            <li><a href="./sandbox.html">Sandbox</a></li>
             <li><a href="./how-it-works.html">How it works</a></li>
             <li><a href="./developers.html">Developers</a></li>
             <li><a href="./limitations.html" aria-current="page">Limitations</a></li>
-            <li><a href="./sandbox.html">Sandbox</a></li>
             <li><a href="./evidence.html">Evidence</a></li>
             <li><a href="./replay.html">Replay</a></li>
             <li><a href="https://github.com/Ridwannurudeen/countersign-ethonline2026" rel="noreferrer">Source</a></li>
@@ -853,7 +859,7 @@
           </div></li>
           <li><div>
             <h3>One tenant, enrolled by hand</h3>
-            <p>The code can serve several tenants, but the deployed instance serves one treasury, and every tenant is written into the guard's configuration by the operator. There is no self-enrollment endpoint. This is not a marketplace.</p>
+            <p>The code can serve several tenants; the deployed instance serves two, the hosted treasury and the sandbox treasury, and every tenant is written into the guard's configuration by the operator. There is no self-enrollment endpoint. This is not a marketplace.</p>
             <p class="next"><strong>Next</strong> an enrollment path the owner can complete without the operator, with its own review.</p>
           </div></li>
           <li><div>
@@ -898,7 +904,7 @@
           </div></li>
           <li><div>
             <h3>No independent security audit</h3>
-            <p>The code has been reviewed and mutation-tested internally, and the invariant-to-test map and threat model are published. No third party has audited it. The offline suite is 520 TypeScript and 13 Python tests as of 2026-09-12, and it covers the validator, not the deployment.</p>
+            <p>The code has been reviewed and mutation-tested internally, and the invariant-to-test map and threat model are published. No third party has audited it. The offline suite is 570 TypeScript and 13 Python tests as of 2026-09-13, and it covers the validator, not the deployment.</p>
             <p class="next"><strong>Next</strong> an external review of <code>src/review-schedule.ts</code>, <code>src/countersign-transfer.ts</code> and <code>src/payment-gate.ts</code> against <a href="https://github.com/Ridwannurudeen/countersign-ethonline2026/blob/main/THREAT_MODEL.md" rel="noreferrer">the threat model</a>.</p>
           </div></li>
         </ol>
@@ -934,6 +940,8 @@
               <li><a href="https://testnet.mirrornode.hedera.com/api/v1/accounts/0.0.10502369" rel="noreferrer">Guard 0.0.10502369</a></li>
               <li><a href="https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10502545/messages" rel="noreferrer">Verdict topic 0.0.10502545</a></li>
               <li><a href="https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10507040/messages" rel="noreferrer">Verdict topic 0.0.10507040</a></li>
+              <li><a href="https://testnet.mirrornode.hedera.com/api/v1/accounts/0.0.10511893" rel="noreferrer">Sandbox treasury 0.0.10511893</a></li>
+              <li><a href="https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10511981/messages" rel="noreferrer">Sandbox verdict topic 0.0.10511981</a></li>
             </ul>
           </section>
         </div>

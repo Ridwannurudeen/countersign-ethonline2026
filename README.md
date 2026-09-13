@@ -122,7 +122,7 @@ The deployed instance at `countersign.gudman.xyz` serves **one tenant**, the tre
 documented above. Multi-tenant support and agent-card resolution on this branch have
 not been deployed; this change does not add tenants to the live instance.
 
-The deployed host holds exactly one private key, the guard's own. The owner and agent keys
+The guard process holds exactly one private key, its own, and no owner key is on the host. The same host also runs the sandbox service, which holds the sandbox tenant's agent and payer keys. The owner and agent keys
 that together authorize the treasury never leave the caller, which is why the guard cannot
 move the funds it protects either.
 

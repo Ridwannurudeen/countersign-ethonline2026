@@ -2,8 +2,14 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%23172019'/><rect x='3' y='7' width='10' height='2' fill='%23145c43'/></svg>" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Countersign</title>
+    <title>Countersign — a refusal you can verify on Hedera</title>
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://countersign.gudman.xyz/" />
+    <meta property="og:title" content="Countersign — a refusal you can verify on Hedera" />
+    <meta property="og:description" content="An authorization boundary for AI agents that hold HBAR on Hedera. The agent proposes, the network refuses on its own, and a paid, independent guard decides. Testnet." />
+    <meta name="twitter:card" content="summary" />
     <meta name="description" content="An authorization boundary for AI agents that hold HBAR on Hedera. The agent proposes, the network refuses on its own, and a paid, independent guard decides. Testnet." />
     <style>
       :root {
@@ -811,7 +817,7 @@
     </style>
   </head>
   <body>
-    <a class="skip-link" href="#main">Skip to content</a>
+    <a class="skip-link" href="#invitation">Skip to content</a>
     <main id="main">
       <section class="encounter" id="encounter" aria-labelledby="encounter-title">
         <div class="wrap">
@@ -831,7 +837,7 @@
               </ul>
             </nav>
           </header>
-          <div class="invitation">
+          <div class="invitation" id="invitation">
             <p class="proposition">You hold the agent key.<br />Try to move <em>0.01 HBAR.</em></p>
             <p class="ownership">Act as an agent holding a funded treasury. The treasury, agent, payer and vendor accounts are operator-owned and operator-funded. This is the operator's testnet money.</p>
           </div>
@@ -871,7 +877,7 @@
             <p id="run-links" class="live-status" hidden><a id="run-schedule" hidden>Schedule on the mirror node</a> <a id="run-payment" hidden>Review payment</a> <a id="run-verdict" hidden>Guard verdict</a> <a id="run-record" hidden>Open this run</a></p>
           </div>
           <article id="recorded-refusal" class="ledger recorded" aria-labelledby="recorded-title" tabindex="-1">
-            <p class="recorded-label label">Previous operator run &middot; 2026-09-13 &middot; not your attempt</p>
+            <p class="recorded-label label">Previous operator run &middot; 2026-09-12 &middot; not your attempt</p>
             <div class="result-grid">
               <div>
                 <h2 id="recorded-title" class="outcome-title">Refused.</h2>
@@ -913,7 +919,7 @@
   ownerKey,
   2-of[ agentKey, guardKey ]
 ]</code></pre>
-          <div class="scroll" tabindex="0" role="region" aria-label="Which signer sets can move the treasury">
+          <div class="scroll" aria-label="Which signer sets can move the treasury">
             <table>
               <thead>
                 <tr>
@@ -956,7 +962,7 @@
           <div><dt>Guard public key prefix</dt><dd><code id="guard-key">41510f63&hellip;</code></dd></div>
           <div><dt>Guard identifier</dt><dd><code id="guard-identifier">uaid:aid:9Us31TEAEQZrKAuN9XKiaVCEHE59my6uoPfUH8aAXFVQUVz4AAxxKf4bjv8mreGAHz;uid=0;registry=countersign;proto=hcs-10;nativeId=hedera:testnet:0.0.10502369</code></dd></div>
         </dl>
-        <p id="guard-status" class="live-status" role="status" aria-live="polite">Recorded identity, read 2026-09-13 from GET /guard. Live read not yet completed.</p>
+        <p id="guard-status" class="live-status" role="status" aria-live="off">Recorded identity, read 2026-09-13 from GET /guard. Live read not yet completed.</p>
       </section>
 
       <section class="public-record" aria-labelledby="public-no-title">
@@ -977,11 +983,11 @@
             </p>
           </div>
         </div>
-        <div class="scroll" tabindex="0" role="region" aria-label="Where the decision and its record live, compared">
+        <div class="scroll" aria-label="Where the decision and its record live, compared">
           <table>
             <thead>
               <tr>
-                <th scope="col"></th>
+                <td></td>
                 <th scope="col">Policy engines inside a vendor boundary<br /><span style="text-transform:none;letter-spacing:0.02em">AWS Bedrock AgentCore Payments, Fireblocks, Coinbase, Turnkey, Google AP2</span></th>
                 <th scope="col">Countersign</th>
               </tr>
@@ -1019,7 +1025,7 @@
             <div><dt>review fee</dt><dd>1,000,000 tinybars, settled</dd></div>
             <div><dt>failed check</dt><dd>recipient outside the mandate allowlist</dd></div>
           </dl>
-          <p id="ledger-status" class="live-status" role="status" aria-live="polite">Recorded schedule values. Live read not yet completed. Treasury, fee and failed check are recorded review evidence.</p>
+          <p id="ledger-status" class="live-status" role="status" aria-live="off">Recorded schedule values. Live read not yet completed. Treasury, fee and failed check are recorded review evidence.</p>
           <p>
             <a href="https://testnet.mirrornode.hedera.com/api/v1/schedules/0.0.10502603" rel="noreferrer">Open the schedule on the mirror node</a>
             &middot; <a href="https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10502545/messages/2" rel="noreferrer">the guard's verdict record</a>
@@ -1137,19 +1143,19 @@
         </div>
         <h3 id="feed-title">Recent sandbox authorization outcomes</h3>
         <p>Operator-run reliability exercises, not users. Accounts are operator-owned and operator-funded, on Hedera testnet. Outcomes are reported by the guard; each schedule link opens the mirror node for execution evidence.</p>
-        <p id="feed-summary" class="live-status" role="status" aria-live="polite">2 listed runs: 1 approved / 1 refused / 0 other. Separate from evidence.json and buyer-path counts.</p>
-        <p id="feed-status" class="live-status" role="status" aria-live="polite">Recorded sandbox snapshot, read 2026-09-13 from GET /sandbox/runs. Live read not yet completed.</p>
+        <p id="feed-summary" class="live-status" role="status" aria-live="off">2 listed runs: 1 approved / 1 refused / 0 other. Separate from evidence.json and buyer-path counts.</p>
+        <p id="feed-status" class="live-status" role="status" aria-live="off">Recorded sandbox snapshot, read 2026-09-13 from GET /sandbox/runs. Live read not yet completed.</p>
         <ol id="feed-list" class="run-feed" tabindex="0" aria-labelledby="feed-title">
           <li><a href="https://testnet.mirrornode.hedera.com/api/v1/schedules/0.0.10512157" rel="noreferrer">Approved · schedule 0.0.10512157</a><span>vendor · 10000000 tinybars</span></li>
           <li><a href="https://testnet.mirrornode.hedera.com/api/v1/schedules/0.0.10512142" rel="noreferrer">Refused · schedule 0.0.10512142</a><span>stranger · 1000000 tinybars</span></li>
         </ol>
         <p><a href="./sandbox.html">Open the full sandbox</a> to vary the amount, or return to the encounter above and choose “Try this transfer” to request an authorization review. Reload this page to read its outcome here.</p>
-        <div class="scroll" tabindex="0" role="region" aria-label="Schedule path: one approved and one refused review">
+        <div class="scroll" aria-label="Schedule path: one approved and one refused review">
           <table>
             <caption>Schedule path, 2026-09-12 &middot; POST /review</caption>
             <thead>
               <tr>
-                <th scope="col"></th>
+                <td></td>
                 <th scope="col"><span class="tag tag-approved">Approved</span></th>
                 <th scope="col"><span class="tag tag-refused">Refused</span></th>
               </tr>
@@ -1188,12 +1194,12 @@
             </tbody>
           </table>
         </div>
-        <div class="scroll" tabindex="0" role="region" aria-label="Buyer path: one approved and one refused purchase" style="margin-top:1.5rem">
+        <div class="scroll" aria-label="Buyer path: one approved and one refused purchase" style="margin-top:1.5rem">
           <table>
             <caption>Buyer path, 2026-09-12 &middot; POST /countersign &middot; the seller is operated by us with stock x402 libraries</caption>
             <thead>
               <tr>
-                <th scope="col"></th>
+                <td></td>
                 <th scope="col"><span class="tag tag-approved">Approved</span></th>
                 <th scope="col"><span class="tag tag-refused">Refused</span></th>
               </tr>
@@ -1279,6 +1285,8 @@
               <li><a href="https://testnet.mirrornode.hedera.com/api/v1/accounts/0.0.10502369" rel="noreferrer">Guard 0.0.10502369</a></li>
               <li><a href="https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10502545/messages" rel="noreferrer">Verdict topic 0.0.10502545</a></li>
               <li><a href="https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10507040/messages" rel="noreferrer">Verdict topic 0.0.10507040</a></li>
+              <li><a href="https://testnet.mirrornode.hedera.com/api/v1/accounts/0.0.10511893" rel="noreferrer">Sandbox treasury 0.0.10511893</a></li>
+              <li><a href="https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10511981/messages" rel="noreferrer">Sandbox verdict topic 0.0.10511981</a></li>
             </ul>
           </section>
         </div>

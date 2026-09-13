@@ -2,8 +2,14 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%23172019'/><rect x='3' y='7' width='10' height='2' fill='%23145c43'/></svg>" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>How Countersign works</title>
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://countersign.gudman.xyz/how-it-works.html" />
+    <meta property="og:title" content="How Countersign works" />
+    <meta property="og:description" content="The treasury key tree, the owner-signed mandate, the two review paths and what the guard signs on each." />
+    <meta name="twitter:card" content="summary" />
     <meta name="description" content="The treasury key tree, the owner-signed mandate, the two review paths and what the guard signs on each." />
     <style>
       :root {
@@ -801,10 +807,10 @@
         <nav class="site-nav" aria-label="Site">
           <ul>
             <li><a href="./index.html">Overview</a></li>
+            <li><a href="./sandbox.html">Sandbox</a></li>
             <li><a href="./how-it-works.html" aria-current="page">How it works</a></li>
             <li><a href="./developers.html">Developers</a></li>
             <li><a href="./limitations.html">Limitations</a></li>
-            <li><a href="./sandbox.html">Sandbox</a></li>
             <li><a href="./evidence.html">Evidence</a></li>
             <li><a href="./replay.html">Replay</a></li>
             <li><a href="https://github.com/Ridwannurudeen/countersign-ethonline2026" rel="noreferrer">Source</a></li>
@@ -862,9 +868,11 @@
               <dt>Guard <span class="mono">0.0.10502369</span></dt>
               <dd>
                 <p>
-                  The paid reviewer at <code>countersign.gudman.xyz</code>. Its host holds
-                  exactly one private key, its own. Holding one key of a 2-of, it cannot
-                  spend the treasury, and holding no owner key, it cannot rewrite policy.
+                    The paid reviewer at <code>countersign.gudman.xyz</code>. The guard
+                    process holds exactly one private key, its own, and no owner key is on
+                    the host. Holding one key of a 2-of, it cannot spend the treasury, and
+                    holding no owner key, it cannot rewrite policy. The same host also runs
+                    the sandbox service, which holds that tenant's agent and payer keys.
                 </p>
               </dd>
             </div>
@@ -1049,6 +1057,8 @@ mandateDigest = lowercase hex SHA-256(preimage)  goes in the schedule memo</code
               <li><a href="https://testnet.mirrornode.hedera.com/api/v1/accounts/0.0.10502369" rel="noreferrer">Guard 0.0.10502369</a></li>
               <li><a href="https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10502545/messages" rel="noreferrer">Verdict topic 0.0.10502545</a></li>
               <li><a href="https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10507040/messages" rel="noreferrer">Verdict topic 0.0.10507040</a></li>
+              <li><a href="https://testnet.mirrornode.hedera.com/api/v1/accounts/0.0.10511893" rel="noreferrer">Sandbox treasury 0.0.10511893</a></li>
+              <li><a href="https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10511981/messages" rel="noreferrer">Sandbox verdict topic 0.0.10511981</a></li>
             </ul>
           </section>
         </div>

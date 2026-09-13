@@ -2,8 +2,14 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%23172019'/><rect x='3' y='7' width='10' height='2' fill='%23145c43'/></svg>" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Countersign sandbox — try the policy</title>
+    <title>Countersign sandbox</title>
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://countersign.gudman.xyz/sandbox.html" />
+    <meta property="og:title" content="Countersign sandbox" />
+    <meta property="og:description" content="Try an owner-signed authorization policy with operator-funded accounts on Hedera testnet. Inspect each run on the public ledger." />
+    <meta name="twitter:card" content="summary" />
     <meta name="description" content="Try an owner-signed authorization policy with operator-funded accounts on Hedera testnet. Inspect each run on the public ledger." />
     <style>
       :root {
@@ -99,10 +105,10 @@
         <nav class="site-nav" aria-label="Site">
           <ul>
             <li><a href="./index.html">Overview</a></li>
+            <li><a href="./sandbox.html" aria-current="page">Sandbox</a></li>
             <li><a href="./how-it-works.html">How it works</a></li>
             <li><a href="./developers.html">Developers</a></li>
             <li><a href="./limitations.html">Limitations</a></li>
-            <li><a href="./sandbox.html" aria-current="page">Sandbox</a></li>
             <li><a href="./evidence.html">Evidence</a></li>
             <li><a href="./replay.html">Replay</a></li>
             <li><a href="https://github.com/Ridwannurudeen/countersign-ethonline2026" rel="noreferrer">Source</a></li>
@@ -114,7 +120,7 @@
       <section class="page-hero" aria-labelledby="sandbox-title">
         <p class="eyebrow">Authorization sandbox &middot; Hedera testnet</p>
         <h1 id="sandbox-title">You are the agent.</h1>
-        <p class="lede">You are the adversary here. The owner of this treasury signed a policy in advance and is offline: pay the vendor account, up to <span class="mono">0.5 ℏ</span>, nothing else. The agent and payer keys are ours and sit on a different host from the guard. The guard is the live guard at this origin — it cannot tell this request from a paying tenant's. Try to get money out.</p>
+        <p class="lede">You are the adversary here. The owner of this treasury signed a policy in advance and is offline: pay the vendor account, up to <span class="mono">0.5 ℏ</span>, nothing else. The agent and payer keys are ours and are held by a separate operator service, which runs on the same host as the guard and holds no owner key. The guard is the live guard at this origin, and the sandbox is an enrolled tenant that pays the same review fee — you get the review any tenant gets. Try to get money out.</p>
         <p class="disclosure">The treasury, agent, payer and vendor accounts are operator-owned and operator-funded. Sandbox runs are operator-run reliability exercises, not users. This is Hedera testnet. You choose the proposal; our accounts pay for it, including a refused review.</p>
       </section>
       <section class="section instrument" aria-label="Propose a transfer and inspect its authorization">

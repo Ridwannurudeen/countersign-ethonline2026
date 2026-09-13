@@ -2,8 +2,14 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%23172019'/><rect x='3' y='7' width='10' height='2' fill='%23145c43'/></svg>" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Countersign for developers</title>
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://countersign.gudman.xyz/developers.html" />
+    <meta property="og:title" content="Countersign for developers" />
+    <meta property="og:description" content="The four HTTP endpoints, the x402 payment, the co-signed client signer, and how a treasury comes to use the guard." />
+    <meta name="twitter:card" content="summary" />
     <meta name="description" content="The four HTTP endpoints, the x402 payment, the co-signed client signer, and how a treasury comes to use the guard." />
     <style>
       :root {
@@ -801,10 +807,10 @@
         <nav class="site-nav" aria-label="Site">
           <ul>
             <li><a href="./index.html">Overview</a></li>
+            <li><a href="./sandbox.html">Sandbox</a></li>
             <li><a href="./how-it-works.html">How it works</a></li>
             <li><a href="./developers.html" aria-current="page">Developers</a></li>
             <li><a href="./limitations.html">Limitations</a></li>
-            <li><a href="./sandbox.html">Sandbox</a></li>
             <li><a href="./evidence.html">Evidence</a></li>
             <li><a href="./replay.html">Replay</a></li>
             <li><a href="https://github.com/Ridwannurudeen/countersign-ethonline2026" rel="noreferrer">Source</a></li>
@@ -828,7 +834,7 @@
           <h2 id="endpoints-title">Endpoints</h2>
           <p>
             All responses are JSON. The paid endpoints answer <code>402</code> until an x402
-            payment header is present and settled. Any other path is <code>404</code>.
+            payment header is present and settled. Any other guard path is <code>404</code>; the sandbox routes under <code>/sandbox/</code> are a separate service at the same origin.
           </p>
         </div>
         <div class="scroll" tabindex="0" role="region" aria-label="The four HTTP endpoints">
@@ -939,7 +945,7 @@ const signer = createCosignedClientHederaSigner(treasuryAccountId, agentPrivateK
           <div>
             <p>
               Enrollment is operator-configured. There is no self-enrollment endpoint, and the
-              deployed instance serves one tenant. These are the steps the operator takes; the
+              deployed instance serves two operator-enrolled tenants, the hosted treasury and the sandbox treasury. These are the steps the operator takes; the
               provisioning script performs the first two.
             </p>
           </div>
@@ -967,7 +973,7 @@ const signer = createCosignedClientHederaSigner(treasuryAccountId, agentPrivateK
 cd countersign-ethonline2026
 npm ci --omit=peer
 npm run typecheck
-npm test                          # 543 tests, 543 passing on 2026-09-13
+npm test                          # 570 tests, 570 passing on 2026-09-13
 python -m pytest python/ -q       # 13 tests, 13 passing on 2026-09-12
 
 npm run hosted-review             # in-policy transfer, expect an approval
@@ -1009,6 +1015,8 @@ npm run hosted-review refused     # out-of-policy recipient, expect a paid refus
               <li><a href="https://testnet.mirrornode.hedera.com/api/v1/accounts/0.0.10502369" rel="noreferrer">Guard 0.0.10502369</a></li>
               <li><a href="https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10502545/messages" rel="noreferrer">Verdict topic 0.0.10502545</a></li>
               <li><a href="https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10507040/messages" rel="noreferrer">Verdict topic 0.0.10507040</a></li>
+              <li><a href="https://testnet.mirrornode.hedera.com/api/v1/accounts/0.0.10511893" rel="noreferrer">Sandbox treasury 0.0.10511893</a></li>
+              <li><a href="https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10511981/messages" rel="noreferrer">Sandbox verdict topic 0.0.10511981</a></li>
             </ul>
           </section>
         </div>
