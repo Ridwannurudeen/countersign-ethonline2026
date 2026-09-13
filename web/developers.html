@@ -845,7 +845,7 @@
     <main id="main" class="wrap">
       <section class="page-hero" aria-labelledby="dev-title">
         <p class="eyebrow">For developers</p>
-        <h1 id="dev-title">Four endpoints. One price, quoted before you pay.</h1>
+        <h1 id="dev-title">Four endpoints. Every price quoted before you pay.</h1>
         <p class="lede">
           Two unpaid reads identify the guard. Two paid writes ask it to decide. Everything
           below was read from the live service at <code>https://countersign.gudman.xyz</code>
@@ -997,7 +997,7 @@ const signer = createCosignedClientHederaSigner(treasuryAccountId, agentPrivateK
 cd countersign-ethonline2026
 npm ci --omit=peer
 npm run typecheck
-npm test                          # 570 tests, 570 passing on 2026-09-13
+npm test                          # 652 tests, 652 passing on 2026-09-13
 python -m pytest python/ -q       # 13 tests, 13 passing on 2026-09-12
 
 npm run hosted-review             # in-policy transfer, expect an approval

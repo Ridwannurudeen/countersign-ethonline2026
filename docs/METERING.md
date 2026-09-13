@@ -4,7 +4,7 @@
 `POST /review` keeps its configured flat HBAR price: the caller supplies a ScheduleID,
 and the guard cannot inspect its consensus body until after settlement. Neither route
 bills elapsed CPU time, inference tokens, or measured post-usage work. There is no volume
-discount. This branch is locally verified and has not been pushed or deployed.
+discount. Deployed and live on the transfer path.
 
 ## Reproduce the quote
 
@@ -148,5 +148,5 @@ After restoring the second mutation:
 ℹ fail 0
 ```
 
-The complete suite before committing passed 599 TypeScript tests with zero failures;
+The complete suite passed 652 TypeScript tests with zero failures;
 the Python suite passed 13 tests. `npm run typecheck` completed without diagnostics.

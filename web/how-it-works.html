@@ -937,7 +937,7 @@
               <tr><th scope="row"><code>tenantId</code></th><td>ASCII, 1 to 64 characters, letters, digits, <code>_</code> and <code>-</code></td></tr>
               <tr><th scope="row"><code>nonce</code></th><td>Minimal unsigned decimal string; must exceed the tenant's prior high-water mark</td></tr>
               <tr><th scope="row"><code>treasuryAccountId</code></th><td>Canonical numeric <code>shard.realm.num</code></td></tr>
-              <tr><th scope="row"><code>asset</code></th><td><code>{ "kind": "hbar" }</code>. An HTS asset parses but is always refused at review; see limitations</td></tr>
+              <tr><th scope="row"><code>asset</code></th><td><code>{ "kind": "hbar" }</code>. An HTS asset parses but is refused on the schedule path; see limitations</td></tr>
               <tr><th scope="row"><code>recipientAllowlist</code></th><td>Non-empty, canonically sorted numeric account IDs, no duplicates</td></tr>
               <tr><th scope="row"><code>maxAmountTinybars</code></th><td>Positive minimal unsigned decimal string</td></tr>
               <tr><th scope="row"><code>validFromEpochSeconds</code></th><td>Unix seconds as a minimal decimal string</td></tr>

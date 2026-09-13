@@ -9,6 +9,25 @@ OpenAI Codex (`codex-cli` 0.153.2) authored the original source, tests, and scri
 - Tests: every file under `test/`.
 - Scripts: the testnet spike and narrated allowed/refused flows under `scripts/`.
 
+## Work on 2026-09-13
+
+The same division held for the final day. OpenAI Codex authored, from briefs written by Claude:
+
+- `scripts/provision-sandbox.ts`, `scripts/sign-sandbox-mandates.ts`, `scripts/serve-sandbox.ts`
+  and `web/sandbox.html` (the public sandbox).
+- `src/payment-meter.ts` and the metered quote in `src/payment-gate.ts`.
+- `scripts/hts-purchase.ts`, `scripts/recurring-payments.ts`.
+- `src/a2a.ts`, `scripts/serve-a2a.ts`, `scripts/a2a-client.ts`.
+- The tests accompanying each of the above, and `docs/METERING.md`, `docs/RECURRING.md`,
+  `docs/HTS-LIVE.md`, `docs/A2A.md`, `docs/SANDBOX-SERVICE.md`.
+
+Claude wrote the briefs for that work, verified it independently rather than accepting the
+reports, and authored directly: the guard-configuration rehearsal, the `clientAddress` proxy fix
+and the contract test in `test/sandbox-contract.test.ts`, the site navigation and the corrections
+to claims that this day's work made inaccurate, and the fixes to the purchase demos so they accept
+a metered quote. Briefs from this day were run from the session scratchpad rather than
+`docs/briefs/`, which holds the earlier numbered set.
+
 ## Anthropic Claude
 
 Anthropic Claude (Claude Code, Opus 5) acted as briefing, verification, and release engineer for

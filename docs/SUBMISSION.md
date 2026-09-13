@@ -59,7 +59,7 @@ the manifest. One guard process authorizes exactly one treasury, so this is not 
 (`POST /review`) refuses every token proposal because it does not resolve the token's
 consensus fee state, while the transfer path (`POST /countersign`) resolves `TokenInfo` from
 consensus and approves a fungible token only when it carries no custom fees and an immutable
-fee schedule. That route is registered, paid and tested, but it has not been exercised live
+fee schedule. That route was exercised live on 2026-09-13, moving a fungible token out of the guarded treasury; the x402 review fee itself remained HBAR. It was not exercised live
 on testnet and no token run appears in the manifest.
 
 ## How it's made
@@ -82,7 +82,7 @@ The challenge exposes those inputs, rates, bounds and the resulting amount so th
 can reproduce it. `POST /review` remains flat because it receives only a ScheduleID and
 fetches the body from consensus after settlement. This is not elapsed compute or post-usage
 inference metering. Both routes still settle in HBAR before authorization review and signing.
-The metering change has local HTTP and payment-scheme test evidence; it has not been deployed.
+The metering change has HTTP and payment-scheme test evidence and is deployed and live on the transfer path.
 The fee is paid from a separately keyed operational account, so no treasury
 authorization key ever enters a payment payload; startup asserts that separation and
 refuses to run otherwise.
@@ -101,7 +101,7 @@ reserved in SQLite before approval, and only the request that wins the reservati
 submit ScheduleSign. Participant identity is HCS-14 for both agent and guard, and verdicts
 go to immutable, submit-key-protected HCS topics with custom fees rejected at startup.
 
-599 TypeScript tests and 13 Python tests, all offline. One defect the offline suite could not have caught
+652 TypeScript tests and 13 Python tests, all offline. One defect the offline suite could not have caught
 surfaced on the first live run: the mirror node returns `signatures[].public_key_prefix` as
 base64 and three code paths expected hex. The fixtures used `"a".repeat(16)`, which is
 itself valid base64, so they passed while asserting nothing about the real encoding. The
