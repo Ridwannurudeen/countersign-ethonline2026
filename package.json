@@ -16,6 +16,7 @@
     "provision-hosted": "node --env-file-if-exists=.env --experimental-strip-types scripts/provision-hosted.ts",
     "provision-sandbox": "node --env-file-if-exists=.env --experimental-strip-types scripts/provision-sandbox.ts",
     "refusal": "node --env-file-if-exists=.env --experimental-strip-types scripts/refusal.ts",
+    "recurring-payments": "node --env-file-if-exists=var/sandbox.env --experimental-strip-types scripts/recurring-payments.ts",
     "serve-guard": "node --env-file-if-exists=var/hosted-guard.env --experimental-strip-types scripts/serve-guard.ts",
     "serve-sandbox": "node --env-file-if-exists=var/sandbox.env --experimental-strip-types scripts/serve-sandbox.ts",
     "sign-sandbox-mandates": "node --env-file-if-exists=var/sandbox.env --env-file-if-exists=var/sandbox-owner.env --experimental-strip-types scripts/sign-sandbox-mandates.ts",
