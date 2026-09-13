@@ -69,6 +69,43 @@ the transfer amount; it does not bind the resource, the quoted price or delivery
 [topic `0.0.10507040`](https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10507040/messages):
 message 1 approved, message 2 refused. The seller in those runs is operated by us.
 
+## Recurring payments
+
+Mandates are single-use, so recurrence is built from a series of them rather than from a standing
+allowance: the owner pre-authorises a fixed number of occurrences and a controller spends them on
+a timer. Every occurrence is a separate scheduled transfer, independently reviewed and individually
+refusable, and the total can never exceed what the owner signed. Three live occurrences on
+2026-09-13, roughly 35 seconds apart:
+
+| Schedule | Executed | Signers |
+| --- | --- | --- |
+| [`0.0.10522683`](https://testnet.mirrornode.hedera.com/api/v1/schedules/0.0.10522683) | yes | agent **and** guard |
+| [`0.0.10522695`](https://testnet.mirrornode.hedera.com/api/v1/schedules/0.0.10522695) | yes | agent **and** guard |
+| [`0.0.10522705`](https://testnet.mirrornode.hedera.com/api/v1/schedules/0.0.10522705) | yes | agent **and** guard |
+
+This is a process timer driving pre-signed authorizations, not a Hedera-native recurrence
+instruction — the guard refuses any schedule that waits for expiry. `scripts/recurring-payments.ts`,
+documented in `docs/RECURRING.md`.
+
+## Token transfers
+
+The transfer path authorizes fungible HTS tokens as well as HBAR, approving one only when consensus
+shows it carries no custom fees and an immutable fee schedule. Exercised live on 2026-09-13 with
+token [`0.0.10522249`](https://testnet.mirrornode.hedera.com/api/v1/tokens/0.0.10522249): transfer
+[`0.0.10502370-1789298664-120630881`](https://testnet.mirrornode.hedera.com/api/v1/transactions/0.0.10502370-1789298664-120630881)
+moved 10 units out of the guarded treasury. **The x402 review fee itself remained HBAR** — this is
+HTS in the guarded transfer, not as the settlement currency. The schedule path still refuses every
+token proposal. `scripts/hts-purchase.ts`, documented in `docs/HTS-LIVE.md`.
+
+## An A2A adapter
+
+`src/a2a.ts` exposes the guard over A2A: a task submitted without payment returns the same x402
+terms the HTTP route quotes, the counterparty settles, and the task completes with the guard's
+verdict. It is a **standalone adapter, not wired into the deployed guard**, and its end-to-end
+demonstration runs against offline Hedera and facilitator responses rather than a live paid run.
+It demonstrates task settlement over A2A, not open-ended negotiation. See `docs/A2A.md`.
+
+
 ## Live evidence
 
 The runs below were made from a separate machine against that public endpoint on
@@ -182,6 +219,22 @@ must be immutable, submit-key protected, and free of custom fees. The HTTP respo
 directly to the resulting mirror-node topic message.
 
 The validator inspects `ScheduleInfo.schedulableTransactionBody` directly. Approval authorizes the immutable ScheduleID that the guard resolved from consensus.
+
+## What a review costs
+
+Both paid routes quote their price in the `402` challenge before any work is done, so a
+caller always knows the amount before paying.
+
+| Route | Price |
+| --- | --- |
+| `POST /review` | Flat **1,000,000 tinybars**. The request carries only a ScheduleID; the body is fetched from consensus afterwards, so there is nothing to meter at quote time. |
+| `POST /countersign` | **Metered.** 1,000,000 base, plus 102,400 per 1,024 decoded bytes and 10,000 per transfer adjustment, with a 1,000,000 floor and a 10,000,000 ceiling. |
+
+The metered challenge publishes the whole calculation — the rates, the floor and ceiling, the
+decoded byte count, the adjustment count and the subtotal — in `extra.meter`, so a caller can
+reproduce the quote and check what they were charged. Settlement is HBAR on both routes.
+`src/payment-meter.ts` holds the formula; `docs/METERING.md` documents it.
+
 
 ## Mandates
 
