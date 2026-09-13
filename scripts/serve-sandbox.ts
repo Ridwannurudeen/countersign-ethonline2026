@@ -132,6 +132,9 @@ export function createSandbox(envelopes: MandateEnvelope[], database: DatabaseSy
         run.steps[3].state = "done";
         save(run, position);
       } catch (error) {
+        // The visitor-facing reason stays generic, but swallowing the cause entirely left a
+        // production failure impossible to investigate.
+        console.error("sandbox run failed:", error instanceof Error ? (error.stack ?? error.message) : error);
         if (run && runs.includes(run)) {
           run.outcome = "failed";
           run.reason = "authorization exercise failed; inspect recorded identifiers before investigating";
@@ -299,7 +302,7 @@ async function main() {
   }
   mkdirSync(resolve("var"), { recursive: true });
   const database = new DatabaseSync(resolve("var", "sandbox-runs.sqlite"));
-  const client = Client.forTestnet().setOperator(config.agent, config.agentKey).setRequestTimeout(30_000).setMaxAttempts(2);
+  const client = Client.forTestnet().setOperator(config.agent, config.agentKey).setRequestTimeout(30_000).setMaxAttempts(5);
   const sandbox = createSandbox(envelopes, database, productionDependencies(config, client));
   const server = createServer((request, response) => {
     void sandbox.handle(request.method ?? "", request.url ?? "", clientAddress(request.socket.remoteAddress, request.headers["x-real-ip"]),
