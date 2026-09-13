@@ -13,11 +13,9 @@ ETHGlobal rejects a video that breaks any of these:
   Aim for 3:00 so an edit cannot push you over, and check the exported length before uploading.
 - **720p or higher.** The upload is rejected below it.
 - **Do not film the screen with a phone.** Screen-record on the computer.
-- **720p or higher.**
 - **Your real voice.** No text-to-speech, no AI voiceover.
 - **No sped-up footage.** Cutting between takes and between clips is fine; changing
   playback rate is not.
-- **No phone recording of a screen**, and no music over text in place of narration.
 
 ## Verified timings
 
