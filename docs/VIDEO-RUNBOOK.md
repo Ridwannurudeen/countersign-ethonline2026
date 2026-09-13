@@ -16,6 +16,7 @@ ETHGlobal rejects a video that breaks any of these:
 - **Your real voice.** No text-to-speech, no AI voiceover.
 - **No sped-up footage.** Cutting between takes and between clips is fine; changing
   playback rate is not.
+- **No music over text in place of narration.** You must actually speak.
 
 ## Verified timings
 
