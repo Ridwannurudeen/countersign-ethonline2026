@@ -27,6 +27,13 @@ class Element {
   children: Element[] = [];
   href = "";
   rel = "";
+  hidden = false;
+  disabled = false;
+  value = "";
+  dataset: Record<string, string> = {};
+  focus() {}
+  listeners = new Map<string, () => Promise<void>>();
+  addEventListener(name: string, listener: () => Promise<void>) { this.listeners.set(name, listener); }
   private text = "";
   get textContent(): string { return this.text + this.children.map(child => child.textContent).join(" "); }
   set textContent(value: string) { this.text = value; this.children = []; }
@@ -46,19 +53,34 @@ async function page(handler: (url: string, options: RequestInit) => Promise<Resp
   const initial = new Map([...elements].map(([id, element]) => [id, element.textContent]));
   const controllers: AbortController[] = [];
   const requests: string[] = [];
+  const timers: (() => void)[] = [];
+  let elapsed = 0;
+  let heartbeat: (() => void) | undefined;
+  class Clock extends Date { static now() { return elapsed; } }
   runInNewContext(script, {
     document: { querySelector: (id: string) => elements.get(id), createElement: () => new Element() },
     fetch: (url: string, options: RequestInit) => { requests.push(url); return handler(url, options); },
     AbortSignal: { timeout: (milliseconds: number) => {
-      assert.equal(milliseconds, 8000);
+      assert.ok([8000, 15000].includes(milliseconds));
       const controller = new AbortController();
       controllers.push(controller);
       return controller.signal;
     } },
-    atob, btoa, Date,
+    atob, btoa, Date: Clock,
+    setTimeout: (callback: () => void) => { timers.push(callback); },
+    setInterval: (callback: () => void) => { heartbeat = callback; return 1; },
+    clearInterval: () => { heartbeat = undefined; },
   });
   await setImmediate();
-  return { element: (id: string) => elements.get(id)!, initial, controllers, requests };
+  return { element: (id: string) => elements.get(id)!, initial, controllers, requests,
+    submit: async (recipient = "vendor") => {
+      elements.get("#recipient")!.value = recipient;
+      const listener = elements.get("#encounter-form")!.listeners.get("submit")!;
+      return (listener as (event: { preventDefault(): void }) => Promise<void>)({ preventDefault() {} });
+    },
+    tick: async () => { timers.shift()?.(); await setImmediate(); },
+    advance: (milliseconds: number) => { elapsed += milliseconds; heartbeat?.(); },
+  };
 }
 
 const successful = async (url: string) => Response.json(url === mirror ? schedule : url === "/guard" ? guard : runs);
@@ -160,4 +182,213 @@ test("landing retains the complete identity if either identity field is malforme
     for (const id of ["#guard-key", "#guard-identifier"]) assert.equal(view.element(id).textContent, view.initial.get(id));
     assert.match(view.element("#guard-status").textContent, /did not complete/);
   }
+});
+
+const encounterRun = {
+  origin: "operator", disclosure: runs.disclosure, runId: "test-run", recipient: "vendor",
+  amountTinybars: "1000000", outcome: "approved",
+  steps: ["envelope", "schedule", "payment", "verdict"].map(name => ({ name, state: "done" })),
+  scheduleId: "0.0.10512157", settlementId: "0.0.7162784@1789254730.435839576",
+  hcsVerdictUrl: "https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10511981/messages/2",
+};
+const encounterFetch = async (url: string) => {
+  if (url === "/sandbox/run") return Response.json({ origin: "operator", runId: "test-run" }, { status: 202 });
+  if (url === "/sandbox/run/test-run") return Response.json(encounterRun);
+  if (url.endsWith("/schedules/0.0.10512157")) return Response.json({ ...schedule, schedule_id: "0.0.10512157", executed_timestamp: "1789254816.147827986" });
+  return successful(url);
+};
+
+test("encounter starts only on an explicit action and hides its explanation until then", async () => {
+  const view = await page(successful);
+  assert.deepEqual(view.requests, [mirror, "/sandbox/runs", "/guard"]);
+  assert.equal(view.element("#explanation").hidden, true);
+  assert.equal(view.element("#recorded-refusal").hidden, true);
+  await view.submit("");
+  assert.ok(!view.requests.includes("/sandbox/run"));
+});
+
+for (const status of [503, 429]) {
+  test(`encounter shows the recorded refusal on ${status}, never a fabricated visitor verdict`, async () => {
+    const view = await page(async url => url === "/sandbox/run" ? new Response("unavailable", { status }) : successful(url));
+    await view.submit("stranger");
+    assert.equal(view.element("#recorded-refusal").hidden, false);
+    assert.equal(view.element("#explanation").hidden, false);
+    assert.match(view.element("#encounter-notice").textContent, status === 429 ? /30 seconds/ : /unavailable|exhausted/);
+    assert.match(view.element("#recorded-refusal").textContent, /Previous operator run/);
+    assert.match(view.element("#recorded-refusal").textContent, /0\.0\.10512142/);
+    assert.equal(view.element("#recipient").value, "stranger");
+    assert.notEqual(view.element("#outcome-title").textContent, "Refused.");
+  });
+}
+
+test("encounter network failure preserves selection, labels the fallback and does not resubmit", async () => {
+  const view = await page(async url => { if (url === "/sandbox/run") throw new Error("offline"); return successful(url); });
+  await view.submit("agent");
+  assert.equal(view.element("#recorded-refusal").hidden, false);
+  assert.match(view.element("#encounter-notice").textContent, /may still be running/);
+  assert.equal(view.element("#recipient").value, "agent");
+  assert.equal(view.requests.filter(url => url === "/sandbox/run").length, 1);
+});
+
+test("encounter approval shows the guard decision and independently observed ledger execution", async () => {
+  const view = await page(async (url, options) => {
+    if (url === "/sandbox/run") assert.deepEqual(JSON.parse(options.body as string), { recipient: "vendor", amountTinybars: "1000000" });
+    return encounterFetch(url);
+  });
+  await view.submit();
+  assert.equal(view.element("#outcome-title").textContent, "Approved.");
+  assert.match(view.element("#outcome-detail").textContent, /policy allowed.*another recipient/i);
+  assert.match(view.element("#execution-status").textContent, /Executed.*1789254816\.147827986/);
+  assert.equal(view.element("#run-schedule").href, "https://testnet.mirrornode.hedera.com/api/v1/schedules/0.0.10512157");
+  assert.equal(view.element("#recorded-refusal").hidden, true);
+  assert.equal(view.element("#explanation").hidden, false);
+});
+
+test("encounter refusal retains the actual reason and never claims ledger execution", async () => {
+  const view = await page(async url => {
+    if (url === "/sandbox/run/test-run") return Response.json({ ...encounterRun, recipient: "stranger", outcome: "refused", reason: "recipient is outside the mandate allowlist" });
+    if (url.endsWith("/schedules/0.0.10512157")) return Response.json({ ...schedule, schedule_id: "0.0.10512157" });
+    return encounterFetch(url);
+  });
+  await view.submit("stranger");
+  assert.equal(view.element("#outcome-title").textContent, "Refused.");
+  assert.match(view.element("#outcome-detail").textContent, /outside the mandate allowlist/);
+  assert.match(view.element("#execution-status").textContent, /executed_timestamp: null/);
+});
+
+test("encounter advances only on received stages and prevents duplicate submissions while waiting", async () => {
+  let complete = false;
+  const view = await page(async url => url === "/sandbox/run/test-run" && !complete ? Response.json({
+    ...encounterRun, outcome: "running", settlementId: undefined, hcsVerdictUrl: undefined,
+    steps: [{ name: "envelope", state: "done" }, { name: "schedule", state: "done" }, { name: "payment", state: "running" }, { name: "verdict", state: "pending" }],
+  }) : encounterFetch(url));
+  const pending = view.submit();
+  await setImmediate();
+  assert.equal(view.element("#stage-payment").textContent, "In progress");
+  assert.equal(view.element("#stage-verdict").textContent, "Waiting");
+  assert.equal(view.element("#explanation").hidden, true);
+  await view.submit();
+  assert.equal(view.requests.filter(url => url === "/sandbox/run").length, 1);
+  complete = true;
+  await view.tick();
+  await pending;
+  assert.equal(view.element("#stage-verdict").textContent, "Done");
+});
+
+test("encounter rejects malformed admission responses without polling an invented run", async () => {
+  for (const body of [{ runId: "javascript:alert(1)", origin: "operator" }, { runId: "test-run", origin: "external" }, null]) {
+    const view = await page(async url => url === "/sandbox/run" ? Response.json(body, { status: 202 }) : successful(url));
+    await view.submit();
+    assert.equal(view.element("#recorded-refusal").hidden, false);
+    assert.ok(!view.requests.some(url => url.startsWith("/sandbox/run/")));
+  }
+});
+
+test("encounter validates the entire response before replacing actual stage content", async () => {
+  for (const patch of [
+    { runId: "wrong-run" }, { recipient: "stranger" }, { amountTinybars: "9999999" },
+    { outcome: "accepted" }, { origin: "external" }, { steps: [null] }, { steps: null },
+    { scheduleId: "javascript:alert(1)" }, { hcsVerdictUrl: "https://example.com" },
+    { settlementId: undefined }, { outcome: "refused", reason: undefined },
+  ]) {
+    const view = await page(async url => url === "/sandbox/run/test-run" ? Response.json({ ...encounterRun, ...patch }) : encounterFetch(url));
+    await view.submit();
+    assert.equal(view.element("#recorded-refusal").hidden, false);
+    assert.notEqual(view.element("#outcome-title").textContent, "Approved.");
+    assert.notEqual(view.element("#stage-payment").textContent, "Done");
+  }
+});
+
+test("encounter polling failure preserves the last verified stages alongside the recorded refusal", async () => {
+  let failed = false;
+  const view = await page(async url => {
+    if (url === "/sandbox/run/test-run") {
+      if (failed) throw new Error("offline");
+      return Response.json({ ...encounterRun, outcome: "running" });
+    }
+    return encounterFetch(url);
+  });
+  const pending = view.submit();
+  await setImmediate();
+  assert.equal(view.element("#stage-payment").textContent, "Done");
+  failed = true;
+  await view.tick();
+  await pending;
+  assert.equal(view.element("#stage-payment").textContent, "Done");
+  assert.equal(view.element("#recorded-refusal").hidden, false);
+  assert.match(view.element("#run-record").href, /sandbox\.html#run\/test-run$/);
+});
+
+test("encounter never turns an unverified mirror response into execution evidence", async () => {
+  for (const response of [{ ...schedule, schedule_id: "wrong" }, { schedule_id: "0.0.10512157", executed_timestamp: [] }]) {
+    const view = await page(async url => url.endsWith("/schedules/0.0.10512157") ? Response.json(response) : encounterFetch(url));
+    await view.submit();
+    assert.equal(view.element("#outcome-title").textContent, "Approved.");
+    assert.match(view.element("#execution-status").textContent, /Not verified/);
+  }
+});
+
+test("encounter static HTML remains an honest complete page without JavaScript", () => {
+  assert.match(source, /<h1\b/);
+  assert.match(source, /<fieldset[^>]*disabled/);
+  assert.match(source, /<noscript>[\s\S]*Previous operator run|<noscript>[\s\S]*previous refusal/);
+  assert.doesNotMatch(source.match(/<section[^>]*id="encounter"[\s\S]*?<\/section>/)![0], /<nav|allowlisted/i);
+  assert.doesNotMatch(source, /innerHTML/);
+});
+
+test("encounter admission timeout shows a previous refusal without automatically spending again", async () => {
+  const view = await page(async (url, options) => url === "/sandbox/run" ? new Promise((_resolve, reject) => {
+    options.signal!.addEventListener("abort", () => reject(new Error("timeout")));
+  }) : successful(url));
+  const pending = view.submit();
+  await setImmediate();
+  view.controllers.at(-1)!.abort();
+  await pending;
+  assert.equal(view.element("#recorded-refusal").hidden, false);
+  assert.equal(view.requests.filter(url => url === "/sandbox/run").length, 1);
+  assert.equal(view.element("#encounter-controls").disabled, false);
+});
+
+test("encounter long wait stays explicit, then stops polling with its received evidence intact", async () => {
+  const view = await page(async url => url === "/sandbox/run/test-run" ? Response.json({ ...encounterRun, outcome: "running" }) : encounterFetch(url));
+  const pending = view.submit();
+  await setImmediate();
+  view.advance(16000);
+  assert.match(view.element("#elapsed").textContent, /16s elapsed.*Still waiting/);
+  assert.equal(view.element("#explanation").hidden, true);
+  view.advance(45000);
+  await view.tick();
+  await pending;
+  assert.equal(view.element("#outcome-title").textContent, "Updates paused.");
+  assert.equal(view.element("#stage-payment").textContent, "Done");
+  assert.equal(view.element("#recorded-refusal").hidden, false);
+  const stopped = view.element("#elapsed").textContent;
+  view.advance(1000);
+  assert.equal(view.element("#elapsed").textContent, stopped);
+});
+
+test("encounter failed exercise is an unknown outcome, with a separately labelled previous refusal", async () => {
+  const view = await page(async url => url === "/sandbox/run/test-run" ? Response.json({
+    ...encounterRun, outcome: "failed", hcsVerdictUrl: undefined,
+    steps: [{ name: "envelope", state: "done" }, { name: "schedule", state: "done" }, { name: "payment", state: "failed" }, { name: "verdict", state: "never-happened" }],
+  }) : encounterFetch(url));
+  await view.submit();
+  assert.equal(view.element("#outcome-title").textContent, "Outcome unknown.");
+  assert.equal(view.element("#stage-verdict").textContent, "Not reached");
+  assert.equal(view.element("#recorded-refusal").hidden, false);
+  assert.equal(view.element("#run-verdict").hidden, true);
+});
+
+test("encounter approval with null execution keeps approval and reports unobserved execution", async () => {
+  const view = await page(async url => url.endsWith("/schedules/0.0.10512157") ? Response.json({ ...schedule, schedule_id: "0.0.10512157" }) : encounterFetch(url));
+  await view.submit();
+  assert.equal(view.element("#outcome-title").textContent, "Approved.");
+  assert.match(view.element("#execution-status").textContent, /Execution is not yet observed/);
+});
+
+test("encounter exposes a ledger mismatch instead of converting execution into a refusal", async () => {
+  const view = await page(async url => url === "/sandbox/run/test-run" ? Response.json({ ...encounterRun, outcome: "refused", reason: "policy refused" }) : encounterFetch(url));
+  await view.submit();
+  assert.equal(view.element("#outcome-title").textContent, "Refused.");
+  assert.match(view.element("#execution-status").textContent, /Mismatch: executed despite refusal/);
 });

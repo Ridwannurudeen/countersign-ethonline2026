@@ -28,9 +28,12 @@
         --mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
         --measure: 40rem;
       }
-
       * {
         box-sizing: border-box;
+      }
+
+      [hidden] {
+        display: none !important;
       }
 
       html {
@@ -43,15 +46,7 @@
       }
 
       body {
-        min-height: 100vh;
         margin: 0;
-      }
-
-      body::before {
-        display: block;
-        height: 0.4rem;
-        background: var(--green);
-        content: "";
       }
 
       .wrap {
@@ -59,123 +54,21 @@
         margin-inline: auto;
       }
 
-      .skip-link {
-        position: fixed;
-        top: 0.75rem;
-        left: 0.75rem;
-        z-index: 4;
-        transform: translateY(-180%);
-        padding: 0.7rem 0.9rem;
-        font-family: var(--mono);
-        font-size: 0.8rem;
-        color: var(--panel-text);
-        background: var(--green);
-      }
-
-      .skip-link:focus {
-        transform: translateY(0);
-      }
-
-      /* ---- header ---- */
-
-      .site-head {
-        border-bottom: 1px solid var(--line);
-      }
-
-      .head-row {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: flex-end;
-        justify-content: space-between;
-        gap: 1rem 2rem;
-        padding: 1.1rem 0 0.9rem;
-      }
-
-      .brand {
-        display: grid;
-        gap: 0.05rem;
-        color: var(--ink);
-        text-decoration: none;
-      }
-
-      .brand-name {
-        font-size: 1.4rem;
-        font-weight: 400;
-        letter-spacing: -0.02em;
-        line-height: 1;
-      }
-
-      .brand-sub {
-        font-family: var(--mono);
-        font-size: 0.68rem;
-        letter-spacing: 0.06em;
-        color: var(--muted);
-      }
-
-      .site-nav ul {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.35rem 1.35rem;
-        margin: 0;
-        padding: 0;
-        list-style: none;
-      }
-
-      .site-nav a {
-        display: inline-block;
-        padding: 0.2rem 0;
-        font-family: var(--mono);
-        font-size: 0.74rem;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: var(--muted);
-        text-decoration: none;
-        border-bottom: 1px solid transparent;
-      }
-
-      .site-nav a:hover {
-        color: var(--ink);
-      }
-
-      .site-nav a[aria-current="page"] {
-        color: var(--ink);
-        border-bottom-color: var(--ink);
-      }
-
-      /* ---- type ---- */
-
-      h1,
-      h2,
-      h3,
-      p,
-      ul,
-      ol,
-      dl,
-      pre,
-      figure,
-      table {
+      h1, h2, h3, p, ul, ol, dl, pre, figure, table {
         margin-top: 0;
       }
 
       h1 {
-        max-width: 15ch;
-        margin-bottom: 1.25rem;
-        font-size: clamp(2.5rem, 7.5vw, 5rem);
+        margin: 0;
+        font-size: 1.4rem;
         font-weight: 400;
-        letter-spacing: -0.03em;
-        line-height: 0.98;
-        text-wrap: balance;
-      }
-
-      h1 em {
-        font-style: italic;
-        color: var(--green);
+        letter-spacing: -0.02em;
       }
 
       h2 {
         max-width: 24ch;
         margin-bottom: 1rem;
-        font-size: clamp(1.7rem, 3.4vw, 2.5rem);
+        font-size: clamp(1.8rem, 3.4vw, 2.8rem);
         font-weight: 400;
         letter-spacing: -0.025em;
         line-height: 1.08;
@@ -186,91 +79,78 @@
         margin-bottom: 0.5rem;
         font-size: 1.2rem;
         font-weight: 400;
-        letter-spacing: -0.01em;
       }
 
-      p,
-      li {
+      p, li {
         max-width: var(--measure);
       }
 
-      .lede {
-        font-size: 1.2rem;
-        line-height: 1.5;
-        max-width: 34rem;
-      }
-
-      .eyebrow,
-      .label,
-      .tag,
-      .qualifier,
-      th,
-      dt,
-      .steps li::before,
-      figcaption,
-      caption {
-        font-family: var(--mono);
-        font-size: 0.74rem;
-        font-weight: 400;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-      }
-
-      .eyebrow {
-        margin-bottom: 1.5rem;
-        color: var(--green);
-      }
-
-      .qualifier {
-        margin-top: 1.5rem;
-        color: var(--muted);
-        text-transform: none;
-        letter-spacing: 0.02em;
-        font-size: 0.8rem;
-      }
-
-      code,
-      pre,
-      .mono {
+      code, pre, .mono {
         font-family: var(--mono);
         font-size: 0.86em;
+        font-variant-numeric: tabular-nums;
       }
 
-      code {
+      code, dd {
         overflow-wrap: anywhere;
-      }
-
-      pre {
-        overflow-x: auto;
-        padding: 1rem 1.15rem;
-        border: 1px solid var(--line);
-        background: var(--surface);
-        line-height: 1.5;
-        font-size: 0.82rem;
-      }
-
-      pre code {
-        font-size: inherit;
       }
 
       a {
         color: var(--ink);
         overflow-wrap: anywhere;
-        text-decoration: underline;
         text-decoration-color: var(--line-strong);
         text-decoration-thickness: 1px;
         text-underline-offset: 0.2em;
-        transition: text-decoration-color 150ms ease-out, color 150ms ease-out;
+        transition: color 150ms ease-out;
       }
 
       a:hover {
         color: var(--green);
-        text-decoration-color: var(--green);
+        text-decoration-color: currentColor;
       }
 
       :focus-visible {
-        outline: 2px solid var(--green);
-        outline-offset: 3px;
+        outline: 3px solid var(--green);
+        outline-offset: 4px;
+      }
+
+      .skip-link {
+        position: fixed;
+        top: 0.75rem;
+        left: 0.75rem;
+        z-index: 4;
+        transform: translateY(-180%);
+        padding: 0.7rem 0.9rem;
+        font: 0.8rem var(--mono);
+        color: var(--panel-text);
+        background: var(--green);
+      }
+
+      .skip-link:focus {
+        transform: translateY(0);
+        outline-color: var(--ink);
+      }
+
+      .skip-link:hover {
+        color: var(--panel-text);
+      }
+
+      .eyebrow, .label, .tag, th, dt, figcaption, caption {
+        font-family: var(--mono);
+        font-size: 0.74rem;
+        font-weight: 400;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .eyebrow {
+        color: var(--green);
+        margin-bottom: 1.5rem;
+      }
+
+      .lede {
+        font-size: 1.2rem;
+        line-height: 1.5;
       }
 
       .tag {
@@ -289,93 +169,204 @@
         background: var(--red-soft);
       }
 
-      /* ---- sections ---- */
 
-      main {
-        padding-bottom: 3rem;
+      .encounter {
+        min-height: 100svh;
+        padding-block: 1.25rem 3rem;
+        border-top: 0.4rem solid var(--green);
       }
 
-      .section {
-        padding: 4.5rem 0;
-        border-bottom: 1px solid var(--line);
-      }
-
-      .section:last-of-type {
-        border-bottom: 0;
-      }
-
-      .section-head {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr);
-        gap: 1.5rem 3rem;
-        align-items: start;
-        margin-bottom: 2.25rem;
-      }
-
-      .section-head h2 {
-        margin-bottom: 0;
-      }
-
-      .section-head p:last-child {
-        margin-bottom: 0;
-      }
-
-      .hero {
-        display: grid;
-        grid-template-columns: minmax(0, 1.15fr) minmax(18rem, 0.85fr);
-        gap: 3rem 4rem;
-        align-items: start;
-        padding: 3.5rem 0 4.5rem;
-        border-bottom: 1px solid var(--line);
-      }
-
-      .page-hero {
-        padding: 4.5rem 0 3.5rem;
-        border-bottom: 1px solid var(--line);
-      }
-
-      .actions {
+      .encounter-head {
         display: flex;
         flex-wrap: wrap;
-        gap: 0.75rem;
-        margin-top: 1.75rem;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 0.5rem 2rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid var(--line);
       }
 
-      .btn {
-        display: inline-block;
-        padding: 0.7rem 1.1rem;
-        border: 1px solid var(--ink);
-        font-family: var(--mono);
-        font-size: 0.78rem;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        text-decoration: none;
+      .encounter-head p {
+        margin: 0;
+        color: var(--muted);
+        font: 0.74rem var(--mono);
+      }
+
+      .invitation {
+        padding-block: clamp(2.5rem, 7vh, 5rem) 1rem;
+      }
+
+      .proposition {
+        max-width: 20ch;
+        margin-bottom: 1.5rem;
+        font-size: clamp(2.5rem, 5.8vw, 4.8rem);
+        line-height: 1.04;
+        letter-spacing: -0.035em;
+        text-wrap: balance;
+      }
+
+      .proposition em {
+        font-style: italic;
+      }
+
+      .ownership {
+        max-width: 47rem;
+        color: var(--muted);
+      }
+
+      fieldset {
+        border: 0;
+        padding: 0;
+        margin: 0;
+        min-width: 0;
+      }
+
+      .transfer-controls {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: end;
+        gap: 1rem;
+      }
+
+      .recipient-control {
+        flex: 1 1 22rem;
+        max-width: 31rem;
+      }
+
+      label {
+        display: block;
+        margin-bottom: 0.5rem;
+        font: 0.8rem var(--mono);
+      }
+
+      select, button {
+        min-height: 3.25rem;
+        border: 1px solid var(--line-strong);
+        border-radius: 0;
+        font: 0.85rem var(--mono);
+      }
+
+      select {
+        width: 100%;
+        max-width: 100%;
+        padding: 0.7rem 0.5rem;
         color: var(--ink);
-        background: transparent;
-        transition: background-color 150ms ease-out, color 150ms ease-out, border-color 150ms ease-out;
+        background: var(--surface);
       }
 
-      .btn:hover {
-        color: var(--ink);
-        background: var(--sunk);
-      }
-
-      .btn-primary {
+      button {
+        padding: 0.7rem 1.3rem;
         color: var(--panel-text);
         background: var(--ink);
+        border-color: var(--ink);
+        cursor: pointer;
       }
 
-      .btn-primary:hover {
-        color: var(--panel-text);
-        border-color: var(--green);
+      button:hover:not(:disabled) {
         background: var(--green);
+        border-color: var(--green);
       }
 
-      /* ---- ledger panel (dark) ---- */
+      button:disabled {
+        cursor: wait;
+      }
+
+      .encounter-note {
+        min-height: 3.2em;
+        margin: 1rem 0 0;
+        font: 0.78rem/1.6 var(--mono);
+        color: var(--muted);
+      }
+
+      .encounter-result {
+        margin-top: 1.5rem;
+      }
+
+      #run-links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem 1.25rem;
+      }
+
+      .result-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+        gap: 2rem 3rem;
+      }
+
+      .outcome-title {
+        max-width: none;
+        font-size: clamp(2.5rem, 6vw, 5rem);
+        margin-bottom: 1rem;
+      }
+
+      [data-outcome="approved"] .outcome-title {
+        color: var(--panel-green);
+      }
+
+      [data-outcome="refused"] .outcome-title {
+        color: var(--panel-red);
+      }
+
+      .chain {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        counter-reset: stage;
+      }
+
+      .chain li {
+        padding-block: 0.6rem;
+        border-top: 1px solid var(--panel-dim);
+      }
+
+      .chain li::before {
+        counter-increment: stage;
+        content: counter(stage, decimal-leading-zero) " / ";
+        color: var(--panel-dim);
+        font: 0.78rem var(--mono);
+      }
+
+      .chain span {
+        display: block;
+        padding-top: 0.15rem;
+        color: var(--panel-dim);
+        font: 0.78rem/1.55 var(--mono);
+      }
+
+      .chain [data-state="done"] {
+        color: var(--panel-green);
+      }
+
+      .chain [data-state="failed"] {
+        color: var(--panel-red);
+      }
+
+      .chain [data-state="running"] {
+        color: var(--panel-text);
+      }
+
+      .recorded {
+        margin-top: 1.5rem;
+        border-left: 0.3rem solid var(--red);
+      }
+
+      .recorded h2 {
+        color: var(--panel-red);
+      }
+
+      .recorded .recorded-label {
+        margin: 0 0 1.3rem;
+      }
+
+      .recorded .fields {
+        margin-top: 1.5rem;
+      }
+
 
       .ledger {
-        margin: 0;
-        padding: 1.4rem 1.5rem 1.5rem;
+        margin-inline: 0;
+        padding: clamp(1.1rem, 3vw, 2.5rem);
         color: var(--panel-text);
         background: var(--panel);
       }
@@ -394,11 +385,6 @@
         background: transparent;
       }
 
-      .ledger .tag-approved {
-        color: var(--panel-green);
-        background: transparent;
-      }
-
       .fields {
         display: grid;
         gap: 0.55rem;
@@ -410,7 +396,7 @@
         grid-template-columns: minmax(9rem, 12rem) minmax(0, 1fr);
         gap: 0.25rem 1rem;
         padding-bottom: 0.55rem;
-        border-bottom: 1px solid rgba(244, 241, 232, 0.18);
+        border-bottom: 1px solid var(--line-strong);
       }
 
       .fields > div:last-child {
@@ -428,7 +414,6 @@
         margin: 0;
         font-family: var(--mono);
         font-size: 0.86rem;
-        overflow-wrap: anywhere;
       }
 
       .fields .absent {
@@ -436,12 +421,12 @@
       }
 
       .ledger p {
-        max-width: none;
-        margin: 1.25rem 0 0;
-        font-family: var(--mono);
-        font-size: 0.78rem;
-        line-height: 1.6;
+        margin-bottom: 0;
         color: var(--panel-dim);
+      }
+
+      .ledger p + p, .ledger dl + p {
+        margin-top: 1.25rem;
       }
 
       .ledger a {
@@ -451,7 +436,6 @@
 
       .ledger a:hover {
         color: var(--panel-green);
-        text-decoration-color: var(--panel-green);
       }
 
       .ledger :focus-visible {
@@ -459,73 +443,100 @@
       }
 
       .live-status {
-        block-size: 3lh;
-        overflow-y: auto;
         overflow-wrap: anywhere;
-        font-family: var(--mono);
-        font-size: 0.78rem;
+        font: 0.78rem/1.6 var(--mono);
         color: var(--muted);
       }
 
-      .fields .live-value {
-        block-size: 2lh;
-        overflow-y: auto;
-      }
-
-      .fields #ledger-signatures {
-        block-size: 4lh;
-      }
-
-      #guard-identifier {
-        display: block;
-        block-size: 3lh;
-        overflow-y: auto;
-      }
-
-      .run-feed {
-        block-size: 12rem;
-        overflow-y: auto;
-        margin-bottom: 2rem;
-        padding: 0.5rem 1rem 0.5rem 2rem;
-        border-block: 1px solid var(--line);
-        scrollbar-gutter: stable;
-      }
-
-      .run-feed li {
-        max-width: none;
-        padding-block: 0.65rem;
-        border-bottom: 1px solid var(--line);
-      }
-
-      .run-feed a,
-      .run-feed span {
+      .live-value, #guard-identifier {
         display: block;
         overflow-wrap: anywhere;
       }
 
-      .run-feed span {
-        font-family: var(--mono);
-        font-size: 0.8rem;
-        color: var(--muted);
+
+      .explanation-opening {
+        padding-block: 5rem 3rem;
+        border-top: 1px solid var(--line-strong);
       }
 
-      /* ---- tables ---- */
+      .explanation-opening h2 {
+        font-size: clamp(2.5rem, 5vw, 4rem);
+      }
+
+      .key-explanation {
+        padding-block: 1rem 4rem;
+      }
+
+      .public-record {
+        padding: clamp(1rem, 4vw, 3rem);
+        margin-block: 2rem 5rem;
+        background: var(--sunk);
+      }
+
+      .public-record .ledger {
+        margin-top: 2rem;
+      }
+
+      .review-sequence {
+        max-width: 53rem;
+        margin-inline: auto;
+        padding-bottom: 5rem;
+      }
+
+      .evidence-register {
+        padding-block: 2.5rem 4rem;
+        border-top: 3px solid var(--ink);
+      }
+
+      .limits-note {
+        padding-block: 2rem;
+        border-top: 1px solid var(--line-strong);
+      }
+
+      .section-head {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr);
+        gap: 1.5rem 3rem;
+        align-items: start;
+        margin-bottom: 2.25rem;
+      }
+
+      .review-sequence .section-head, .public-record .section-head {
+        display: block;
+      }
+
+      .section-head p:last-child {
+        margin-bottom: 0;
+      }
+
+      .split {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+        gap: 2rem 3rem;
+        align-items: start;
+      }
+
+      pre {
+        margin: 0;
+        padding: 1rem;
+        border: 1px solid var(--line);
+        background: var(--surface);
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        line-height: 1.5;
+      }
 
       .scroll {
-        overflow-x: auto;
         border: 1px solid var(--line);
         background: var(--surface);
       }
 
-      .scroll:focus-visible {
-        outline-offset: 0;
-      }
-
       table {
         width: 100%;
-        min-width: 36rem;
         border-collapse: collapse;
         font-size: 0.95rem;
+        table-layout: fixed;
+        margin-bottom: 0;
       }
 
       caption {
@@ -535,12 +546,12 @@
         border-bottom: 1px solid var(--line);
       }
 
-      th,
-      td {
+      th, td {
         padding: 0.7rem 1rem;
         text-align: left;
         vertical-align: top;
         border-bottom: 1px solid var(--line);
+        overflow-wrap: anywhere;
       }
 
       th {
@@ -552,14 +563,12 @@
       }
 
       tbody th {
-        width: 12rem;
         text-transform: none;
         letter-spacing: 0.02em;
         font-size: 0.8rem;
       }
 
-      tbody tr:last-child th,
-      tbody tr:last-child td {
+      tbody tr:last-child th, tbody tr:last-child td {
         border-bottom: 0;
       }
 
@@ -571,25 +580,27 @@
         color: var(--red);
       }
 
-      td .mono {
+      .run-feed {
+        margin-bottom: 2rem;
+        padding-left: 1.5rem;
+        border-block: 1px solid var(--line);
+      }
+
+      .run-feed li {
+        max-width: none;
+        padding-block: 0.65rem;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .run-feed a, .run-feed span {
+        display: block;
         overflow-wrap: anywhere;
       }
 
-      /* ---- key tree + state ledger ---- */
-
-      .split {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
-        gap: 2rem 3rem;
-        align-items: start;
+      .run-feed span {
+        font: 0.8rem/1.6 var(--mono);
+        color: var(--muted);
       }
-
-      .tree {
-        margin: 0;
-        font-size: 0.95rem;
-      }
-
-      /* ---- steps (timeline) ---- */
 
       .steps {
         counter-reset: step;
@@ -600,10 +611,9 @@
       }
 
       .steps li {
-        position: relative;
         max-width: none;
         display: grid;
-        grid-template-columns: 4.5rem minmax(0, 1fr);
+        grid-template-columns: 3rem minmax(0, 1fr);
         gap: 0.5rem 1.5rem;
         padding: 1.25rem 0;
         border-bottom: 1px solid var(--line);
@@ -613,16 +623,8 @@
         counter-increment: step;
         content: counter(step, decimal-leading-zero);
         padding-top: 0.2rem;
-        font-size: 0.9rem;
+        font: 0.9rem var(--mono);
         color: var(--muted);
-      }
-
-      .steps h3 {
-        margin-bottom: 0.35rem;
-      }
-
-      .steps p {
-        margin-bottom: 0.5rem;
       }
 
       .steps p:last-child {
@@ -651,8 +653,6 @@
         font-size: 0.95rem;
       }
 
-      /* ---- definition rows ---- */
-
       .rows {
         margin: 0;
         border-top: 1px solid var(--line);
@@ -676,68 +676,7 @@
 
       .rows dd {
         margin: 0;
-        max-width: var(--measure);
       }
-
-      .rows dd p:last-child {
-        margin-bottom: 0;
-      }
-
-      /* ---- limits list ---- */
-
-      .limits {
-        margin: 0;
-        padding: 0;
-        list-style: none;
-        counter-reset: limit;
-        border-top: 1px solid var(--line);
-      }
-
-      .limits li {
-        display: grid;
-        grid-template-columns: 3rem minmax(0, 1fr);
-        gap: 0.5rem 1.5rem;
-        max-width: none;
-        padding: 1.4rem 0;
-        border-bottom: 1px solid var(--line);
-      }
-
-      .limits li::before {
-        counter-increment: limit;
-        content: counter(limit, decimal-leading-zero);
-        padding-top: 0.25rem;
-        font-family: var(--mono);
-        font-size: 0.9rem;
-        color: var(--muted);
-      }
-
-      .limits h3 {
-        margin-bottom: 0.4rem;
-      }
-
-      .limits p {
-        margin-bottom: 0.6rem;
-      }
-
-      .limits p:last-child {
-        margin-bottom: 0;
-      }
-
-      .next {
-        font-size: 0.92rem;
-        color: var(--muted);
-      }
-
-      .next strong {
-        font-weight: 400;
-        font-family: var(--mono);
-        font-size: 0.74rem;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: var(--muted);
-      }
-
-      /* ---- footer ---- */
 
       .site-foot {
         padding: 2.5rem 0 3rem;
@@ -754,8 +693,7 @@
 
       .foot-grid h2 {
         margin-bottom: 0.6rem;
-        font-family: var(--mono);
-        font-size: 0.74rem;
+        font: 0.74rem var(--mono);
         letter-spacing: 0.08em;
         text-transform: uppercase;
         color: var(--muted);
@@ -771,10 +709,6 @@
         margin-bottom: 0.3rem;
       }
 
-      .foot-grid a {
-        color: var(--ink);
-      }
-
       .colophon {
         margin-top: 2.5rem;
         padding-top: 1.25rem;
@@ -786,46 +720,32 @@
         max-width: none;
       }
 
-      /* ---- responsive ---- */
-
       @media (max-width: 60rem) {
-        .hero,
-        .section-head,
-        .split {
+        .section-head, .split {
           grid-template-columns: minmax(0, 1fr);
         }
 
-        .hero {
-          padding-top: 3.5rem;
-        }
       }
-
       @media (max-width: 42rem) {
-        .live-status {
-          block-size: 5lh;
+        .wrap {
+          width: calc(100% - 2rem);
         }
 
-        #guard-identifier {
-          block-size: 9lh;
+        .result-grid, .foot-grid, .fork, .rows > div, .fields > div {
+          grid-template-columns: minmax(0, 1fr);
         }
 
-        .run-feed {
-          block-size: 18rem;
+        .transfer-controls {
+          display: block;
         }
 
-        table {
-          min-width: 0;
-          table-layout: fixed;
+        button {
+          width: 100%;
+          margin-top: 1rem;
         }
 
-        th,
-        td {
+        th, td {
           padding: 0.6rem 0.35rem;
-          overflow-wrap: anywhere;
-        }
-
-        tbody th {
-          width: auto;
         }
 
         .tag {
@@ -834,171 +754,108 @@
           padding-inline: 0.2rem;
         }
 
-        pre {
-          white-space: pre-wrap;
-          overflow-wrap: anywhere;
-        }
-
-        .foot-grid,
-        .fork,
-        .rows > div {
-          grid-template-columns: minmax(0, 1fr);
-        }
-
-        .steps li,
-        .limits li {
-          grid-template-columns: 2.5rem minmax(0, 1fr);
-          gap: 0.4rem 0.9rem;
+        .steps li {
+          grid-template-columns: 1.5rem minmax(0, 1fr);
+          gap: 0.4rem 0.75rem;
         }
 
         .fields > div {
-          grid-template-columns: minmax(0, 1fr);
           gap: 0.15rem;
         }
 
-        .section {
-          padding: 3rem 0;
+        .public-record {
+          margin-inline: -0.5rem;
         }
 
-        .page-hero {
-          padding: 3rem 0 2.5rem;
-        }
-
-        .lede {
-          font-size: 1.08rem;
-        }
       }
-
       @media (prefers-reduced-motion: reduce) {
-        *,
-        *::before,
-        *::after {
+        *, *::before, *::after {
           transition: none !important;
           animation: none !important;
         }
+
       }
     </style>
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to content</a>
-    <header class="site-head">
-      <div class="wrap head-row">
-        <a class="brand" href="./index.html">
-          <span class="brand-name">Countersign</span>
-          <span class="brand-sub">guard 0.0.10502369 &middot; hedera:testnet</span>
-        </a>
-        <nav class="site-nav" aria-label="Site">
-          <ul>
-            <li><a href="./index.html" aria-current="page">Overview</a></li>
-            <li><a href="./how-it-works.html">How it works</a></li>
-            <li><a href="./developers.html">Developers</a></li>
-            <li><a href="./limitations.html">Limitations</a></li>
-            <li><a href="./sandbox.html">Sandbox</a></li>
-            <li><a href="./evidence.html">Evidence</a></li>
-            <li><a href="./replay.html">Replay</a></li>
-            <li><a href="https://github.com/Ridwannurudeen/countersign-ethonline2026" rel="noreferrer">Source</a></li>
-          </ul>
-        </nav>
-      </div>
-    </header>
-    <main id="main" class="wrap">
-      <section class="hero" aria-labelledby="hero-title">
-        <div>
-          <p class="eyebrow">Authorization boundary &middot; AI agents holding HBAR &middot; Hedera testnet</p>
-          <h1 id="hero-title">The agent proposes. The network refuses. A paid guard <em>decides.</em></h1>
-          <p class="lede">
-            An agent's treasury on Hedera is keyed <code>1-of[owner, 2-of[agent, guard]]</code>.
-            The agent can publish the transfer it wants, but its key alone satisfies neither
-            branch, so Hedera itself rejects it. An independent guard checks the proposal
-            against a policy the owner signed and adds the second signature only on an exact
-            match. Callers pay the guard per review over x402, and the answer can be no. The same
-            treasury can also be the payer of an ordinary x402 purchase, signed by the agent and
-            the guard and never by the owner, through an unmodified facilitator — so policy binds
-            what the agent may buy, not only what it may schedule.
-          </p>
-          <div class="actions">
-            <a class="btn btn-primary" href="./sandbox.html">Try to get money out</a>
-            <a class="btn" href="#live-pairs">Read a refusal on the ledger</a>
-            <a class="btn" href="./developers.html">The endpoints</a>
+    <main id="main">
+      <section class="encounter" id="encounter" aria-labelledby="encounter-title">
+        <div class="wrap">
+          <header class="encounter-head">
+            <h1 id="encounter-title">Countersign</h1>
+            <p>Hedera testnet</p>
+          </header>
+          <div class="invitation">
+            <p class="proposition">You hold the agent key.<br />Try to move <em>0.01 HBAR.</em></p>
+            <p class="ownership">Act as an agent holding a funded treasury. The treasury, agent, payer and vendor accounts are operator-owned and operator-funded. This is the operator's testnet money.</p>
           </div>
-          <p class="qualifier">
-            Testnet only. One guarded treasury. Every recorded run is operator-run; none is a user.
-          </p>
-        </div>
-        <figure class="ledger" aria-labelledby="ledger-title">
-          <figcaption id="ledger-title">
-            <span class="tag tag-refused">Recorded refusal</span>
-            <span>Schedule 0.0.10502603, as the public mirror node reports it</span>
-          </figcaption>
-          <dl class="fields">
-            <div><dt>executed_timestamp</dt><dd id="ledger-executed" class="live-value">null</dd></div>
-            <div><dt>deleted</dt><dd id="ledger-deleted" class="live-value">false</dd></div>
-            <div><dt>signatures[]</dt><dd id="ledger-signatures" class="live-value">1 entry &mdash; agent prefix a357ff06&hellip;</dd></div>
-            <div><dt>guard prefix 41510f63&hellip;</dt><dd id="ledger-guard" class="live-value absent">absent</dd></div>
-            <div><dt>treasury 0.0.10502365</dt><dd>unchanged</dd></div>
-            <div><dt>review fee</dt><dd>1,000,000 tinybars, settled</dd></div>
-            <div><dt>failed check</dt><dd>recipient outside the mandate allowlist</dd></div>
-          </dl>
-          <p id="ledger-status" class="live-status" role="status" aria-live="polite">Recorded schedule values. Live read not yet completed. Treasury, fee and failed check are recorded review evidence.</p>
-          <p>
-            <a href="https://testnet.mirrornode.hedera.com/api/v1/schedules/0.0.10502603" rel="noreferrer">Open the schedule on the mirror node</a>
-            &middot; <a href="https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10502545/messages/2" rel="noreferrer">the guard's verdict record</a>
-            &middot; <a href="https://testnet.mirrornode.hedera.com/api/v1/transactions/0.0.7162784-1789222049-843720974" rel="noreferrer">the fee settlement</a>
-          </p>
-        </figure>
-      </section>
-
-      <section class="section" aria-labelledby="public-no-title">
-        <div class="section-head">
-          <h2 id="public-no-title">You pay for a decision that can be no, and the no is public.</h2>
-          <div>
-            <p>
-              The common design for agent spending controls makes the decision inside a
-              vendor's own boundary and records a denial in the vendor's own logs. To confirm
-              that a transfer was blocked, you ask the vendor.
-            </p>
-            <p>
-              Countersign's refusal is the absence of a signature on a public ledger. The
-              schedule exists, its <code>executed_timestamp</code> is null, and the guard's
-              key prefix is missing from <code>signatures[]</code>. Anyone can confirm that
-              with one unauthenticated request to the Hedera mirror node, without running our
-              code or taking our word for it.
-            </p>
+          <form id="encounter-form">
+            <fieldset id="encounter-controls" disabled>
+              <div class="transfer-controls">
+                <div class="recipient-control">
+                  <label for="recipient">Choose the receiving account</label>
+                  <select id="recipient" name="recipient" required>
+                    <option value="" disabled selected>Choose an account</option>
+                    <option value="vendor">Vendor &middot; 0.0.10511898</option>
+                    <option value="stranger">Stranger &middot; 0.0.10511899</option>
+                    <option value="agent">Agent (you) &middot; 0.0.10511894</option>
+                  </select>
+                </div>
+                <button type="submit" id="try-transfer">Try this transfer</button>
+              </div>
+            </fieldset>
+          </form>
+          <p id="encounter-notice" class="encounter-note" role="status" aria-live="polite">Nothing runs until you act. Each attempt uses a single-use owner authorization and makes a real testnet payment. Operator-run reliability exercises, not users.</p>
+          <noscript><p>JavaScript is needed to request a live review. Read the previous refusal below, then follow its ledger evidence and the explanation.</p></noscript>
+          <div id="encounter-result" class="ledger encounter-result" tabindex="-1" hidden>
+            <p id="elapsed" class="live-status" aria-live="off"></p>
+            <div class="result-grid">
+              <div role="status" aria-live="polite">
+                <h2 id="outcome-title" class="outcome-title">Awaiting authorization.</h2>
+                <p id="outcome-detail">The guard has not answered.</p>
+                <p id="execution-status" class="live-status">Ledger execution has not been checked.</p>
+              </div>
+              <ol class="chain" aria-label="Live authorization stages" aria-live="polite">
+                <li>Owner authorization<span id="stage-envelope">Waiting for a run record</span></li>
+                <li>Transfer proposal<span id="stage-schedule">Waiting for a run record</span></li>
+                <li>x402 review payment<span id="stage-payment">Waiting for a run record</span></li>
+                <li>Guard review &amp; verdict<span id="stage-verdict">Waiting for a run record</span></li>
+              </ol>
+            </div>
+            <p id="run-links" class="live-status" hidden><a id="run-schedule" hidden>Schedule on the mirror node</a> <a id="run-payment" hidden>Review payment</a> <a id="run-verdict" hidden>Guard verdict</a> <a id="run-record" hidden>Open this run</a></p>
           </div>
-        </div>
-        <div class="scroll" tabindex="0" role="region" aria-label="Where the decision and its record live, compared">
-          <table>
-            <thead>
-              <tr>
-                <th scope="col"></th>
-                <th scope="col">Policy engines inside a vendor boundary<br /><span style="text-transform:none;letter-spacing:0.02em">AWS Bedrock AgentCore Payments, Fireblocks, Coinbase, Turnkey, Google AP2</span></th>
-                <th scope="col">Countersign</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <th scope="row">Where the check runs</th>
-                <td>Inside the vendor's service.</td>
-                <td>At Hedera consensus, by the treasury's own key tree. The guard adds one signature; it never executes anything itself.</td>
-              </tr>
-              <tr>
-                <th scope="row">Where a denial is recorded</th>
-                <td>In the vendor's private logs.</td>
-                <td>On the public ledger: an unexecuted schedule with no guard signature, plus a verdict record on a Hedera Consensus Service topic.</td>
-              </tr>
-              <tr>
-                <th scope="row">Who can verify a refusal</th>
-                <td>The vendor, and whoever it grants access.</td>
-                <td>Anyone with HTTP. No account with us, no API key, no client library.</td>
-              </tr>
-            </tbody>
-          </table>
+          <article id="recorded-refusal" class="ledger recorded" aria-labelledby="recorded-title" tabindex="-1">
+            <p class="recorded-label label">Previous operator run &middot; 2026-09-13 &middot; not your attempt</p>
+            <div class="result-grid">
+              <div>
+                <h2 id="recorded-title" class="outcome-title">Refused.</h2>
+                <p>The agent proposed 0.01 HBAR to Stranger, 0.0.10511899. The guard refused: the recipient was outside the owner's mandate allowlist.</p>
+                <p>The review payment settled. The guard did not sign.</p>
+              </div>
+              <dl class="fields">
+                <div><dt>Schedule</dt><dd>0.0.10512142</dd></div>
+                <div><dt>executed_timestamp</dt><dd>null</dd></div>
+                <div><dt>signatures[]</dt><dd>agent cb85eca6&hellip; present</dd></div>
+                <div><dt>guard 41510f63&hellip;</dt><dd class="absent">absent from signatures[]</dd></div>
+              </dl>
+            </div>
+            <p class="live-status">Recorded evidence, checked 2026-09-13. This is a previous refusal, not a verdict on your selection.</p>
+            <p><a href="https://testnet.mirrornode.hedera.com/api/v1/schedules/0.0.10512142" rel="noreferrer">Inspect the unexecuted schedule</a> &middot; <a href="https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10511981/messages/1" rel="noreferrer">Read the guard's refusal</a> &middot; <a href="https://testnet.mirrornode.hedera.com/api/v1/transactions/0.0.7162784-1789254730-435839576" rel="noreferrer">Inspect the settled review payment</a></p>
+          </article>
         </div>
       </section>
-
-      <section class="section" aria-labelledby="key-tree-title">
+      <div id="explanation" class="wrap">
+        <div class="explanation-opening">
+          <p class="eyebrow">What decided the transfer</p>
+          <h2>The key you hold<br />isn't enough.</h2>
+          <p class="lede">That was Countersign: a paid authorization review against a policy the treasury owner signed. Approval adds the guard's signature. Refusal leaves it absent. Hedera enforces the treasury's key tree.</p>
+          <p>The agent can publish the transfer it wants, but its key alone satisfies neither branch. The same treasury can also pay an ordinary x402 seller: the agent and guard sign the purchase, through an unmodified facilitator. The owner does not sign each purchase.</p>
+          <p>The tree below belongs to the recorded schedule-path treasury. The sandbox uses a separately funded treasury with the same authorization structure.</p>
+        </div>
+      <section class="key-explanation" aria-labelledby="key-tree-title">
         <div class="section-head">
-          <h2 id="key-tree-title">Why the network says no on its own</h2>
+          <h2 id="key-tree-title">Why your key needs another signature</h2>
           <p>
             The rule is not in the agent's code, where a compromised agent could skip it. It
             is in the treasury account's key list, which Hedera evaluates at consensus for
@@ -1046,9 +903,9 @@
           </div>
         </div>
         <p style="margin-top:1.5rem">
-          The deployed host holds exactly one private key, the guard's. The owner and agent
-          keys never leave the caller's machine, which is also why the guard cannot spend the
-          treasury on its own.
+          The guard process holds the guard key; it cannot spend the treasury on its own.
+          For the sandbox encounter, a separate operator service holds the agent and payer
+          keys and pre-signed owner authorizations. The owner key stays offline.
         </p>
         <dl class="rows">
           <div><dt>Guard public key prefix</dt><dd><code id="guard-key">41510f63&hellip;</code></dd></div>
@@ -1057,9 +914,78 @@
         <p id="guard-status" class="live-status" role="status" aria-live="polite">Recorded identity, read 2026-09-13 from GET /guard. Live read not yet completed.</p>
       </section>
 
-      <section class="section" aria-labelledby="review-title">
+      <section class="public-record" aria-labelledby="public-no-title">
         <div class="section-head">
-          <h2 id="review-title">One review, in order</h2>
+          <h2 id="public-no-title">What a refusal leaves behind.</h2>
+          <div>
+            <p>
+              The common design for agent spending controls makes the decision inside a
+              vendor's own boundary and records a denial in the vendor's own logs. To confirm
+              that a transfer was blocked, you ask the vendor.
+            </p>
+            <p>
+              Countersign's refusal is the absence of a signature on a public ledger. The
+              schedule exists, its <code>executed_timestamp</code> is null, and the guard's
+              key prefix is missing from <code>signatures[]</code>. Anyone can confirm that
+              with one unauthenticated request to the Hedera mirror node, without running our
+              code or taking our word for it.
+            </p>
+          </div>
+        </div>
+        <div class="scroll" tabindex="0" role="region" aria-label="Where the decision and its record live, compared">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col"></th>
+                <th scope="col">Policy engines inside a vendor boundary<br /><span style="text-transform:none;letter-spacing:0.02em">AWS Bedrock AgentCore Payments, Fireblocks, Coinbase, Turnkey, Google AP2</span></th>
+                <th scope="col">Countersign</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">Where the check runs</th>
+                <td>Inside the vendor's service.</td>
+                <td>At Hedera consensus, by the treasury's own key tree. The guard adds one signature; it never executes anything itself.</td>
+              </tr>
+              <tr>
+                <th scope="row">Where a denial is recorded</th>
+                <td>In the vendor's private logs.</td>
+                <td>On the public ledger: an unexecuted schedule with no guard signature, plus a verdict record on a Hedera Consensus Service topic.</td>
+              </tr>
+              <tr>
+                <th scope="row">Who can verify a refusal</th>
+                <td>The vendor, and whoever it grants access.</td>
+                <td>Anyone with HTTP. No account with us, no API key, no client library.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <figure class="ledger" aria-labelledby="ledger-title">
+          <figcaption id="ledger-title">
+            <span class="tag tag-refused">Recorded refusal</span>
+            <span>Schedule 0.0.10502603, as the public mirror node reports it</span>
+          </figcaption>
+          <dl class="fields">
+            <div><dt>executed_timestamp</dt><dd id="ledger-executed" class="live-value">null</dd></div>
+            <div><dt>deleted</dt><dd id="ledger-deleted" class="live-value">false</dd></div>
+            <div><dt>signatures[]</dt><dd id="ledger-signatures" class="live-value">1 entry &mdash; agent prefix a357ff06&hellip;</dd></div>
+            <div><dt>guard prefix 41510f63&hellip;</dt><dd id="ledger-guard" class="live-value absent">absent</dd></div>
+            <div><dt>treasury 0.0.10502365</dt><dd>unchanged</dd></div>
+            <div><dt>review fee</dt><dd>1,000,000 tinybars, settled</dd></div>
+            <div><dt>failed check</dt><dd>recipient outside the mandate allowlist</dd></div>
+          </dl>
+          <p id="ledger-status" class="live-status" role="status" aria-live="polite">Recorded schedule values. Live read not yet completed. Treasury, fee and failed check are recorded review evidence.</p>
+          <p>
+            <a href="https://testnet.mirrornode.hedera.com/api/v1/schedules/0.0.10502603" rel="noreferrer">Open the schedule on the mirror node</a>
+            &middot; <a href="https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10502545/messages/2" rel="noreferrer">the guard's verdict record</a>
+            &middot; <a href="https://testnet.mirrornode.hedera.com/api/v1/transactions/0.0.7162784-1789222049-843720974" rel="noreferrer">the fee settlement</a>
+          </p>
+        </figure>
+      </section>
+
+      <section class="review-sequence" aria-labelledby="review-title">
+        <div class="section-head">
+          <h2 id="review-title">What happened during the wait</h2>
           <p>
             The schedule path, as it ran on testnet. Prices and endpoints are read from the
             live service and dated; they are configuration, not constants.
@@ -1142,9 +1068,9 @@
         </ol>
       </section>
 
-      <section class="section" id="live-pairs" aria-labelledby="pairs-title">
+      <section class="evidence-register" id="live-pairs" aria-labelledby="pairs-title">
         <div class="section-head">
-          <h2 id="pairs-title">Two live pairs, read from the ledger</h2>
+          <h2 id="pairs-title">Compare the recorded outcomes</h2>
           <div>
             <p>
               The schedule path has 10 recorded reviews in
@@ -1172,7 +1098,7 @@
           <li><a href="https://testnet.mirrornode.hedera.com/api/v1/schedules/0.0.10512157" rel="noreferrer">Approved · schedule 0.0.10512157</a><span>vendor · 10000000 tinybars</span></li>
           <li><a href="https://testnet.mirrornode.hedera.com/api/v1/schedules/0.0.10512142" rel="noreferrer">Refused · schedule 0.0.10512142</a><span>stranger · 1000000 tinybars</span></li>
         </ol>
-        <p><a href="./sandbox.html">Open the sandbox</a> and choose “Try this transfer” to request an authorization review. Reload this page to read its outcome here.</p>
+        <p><a href="./sandbox.html">Open the full sandbox</a> to vary the amount, or return to the encounter above and choose “Try this transfer” to request an authorization review. Reload this page to read its outcome here.</p>
         <div class="scroll" tabindex="0" role="region" aria-label="Schedule path: one approved and one refused review">
           <table>
             <caption>Schedule path, 2026-09-12 &middot; POST /review</caption>
@@ -1258,16 +1184,16 @@
         </div>
       </section>
 
-      <section class="section" aria-labelledby="not-title">
+      <section class="limits-note" aria-labelledby="not-title">
         <div class="section-head">
-          <h2 id="not-title">What this is not</h2>
+          <h2 id="not-title">Where this authorization ends</h2>
           <div>
             <p>
               It is not on mainnet. Every account, schedule, payment and verdict above is on
               Hedera testnet. It has no users: all 10 schedule-path reviews and both buyer-path
               runs were made by the operator. The demonstration seller is ours, running stock
-              x402 libraries; no external merchant and no customer exist. The deployed guard
-              serves one treasury, enrolled by the operator, and it is listed in no directory.
+              x402 libraries; no external merchant and no customer exist. The treasuries are
+              enrolled by the operator, and the guard is listed in no directory.
             </p>
             <p>
               The full list, with what would have to change for each, is on the
@@ -1276,8 +1202,9 @@
           </div>
         </div>
       </section>
+      </div>
     </main>
-    <footer class="site-foot">
+    <footer class="site-foot" id="site-footer">
       <div class="wrap">
         <div class="foot-grid">
           <section aria-labelledby="foot-live">
@@ -1319,6 +1246,171 @@
     <script type="module">
       const mirror = "https://testnet.mirrornode.hedera.com/api/v1/schedules/";
       const setText = (id, value) => { document.querySelector(id).textContent = value; };
+      const element = id => document.querySelector(id);
+      const stageNames = ["envelope", "schedule", "payment", "verdict"];
+      const stageStates = { pending: "Waiting", running: "In progress", done: "Done", failed: "Failed; outcome unknown", "never-happened": "Not reached" };
+      let submitting = false;
+
+      function explain() {
+        element("#explanation").hidden = false;
+        element("#site-footer").hidden = false;
+      }
+
+      function recordedFallback(message) {
+        setText("#encounter-notice", `${message} Below is a previous operator refusal, not a verdict on your selection. Your selection is preserved.`);
+        element("#recorded-refusal").hidden = false;
+        explain();
+      }
+
+      async function encounterRequest(url, options = {}) {
+        const response = await fetch(url, {
+          ...options, cache: "no-store", headers: { accept: "application/json", "content-type": "application/json" },
+          signal: AbortSignal.timeout(options.method === "POST" ? 15000 : 8000),
+        });
+        if (!response.ok) {
+          const error = new Error("Sandbox request failed");
+          error.status = response.status;
+          throw error;
+        }
+        return response.json();
+      }
+
+      function validateEncounter(run, runId, recipient) {
+        if (!run || run.runId !== runId || run.recipient !== recipient || run.amountTinybars !== "1000000" ||
+            run.origin !== "operator" || !["running", "failed", "approved", "refused"].includes(run.outcome) ||
+            !Array.isArray(run.steps) || run.steps.length !== stageNames.length ||
+            run.steps.some((step, i) => !step || step.name !== stageNames[i] || !Object.hasOwn(stageStates, step.state)) ||
+            (run.reason !== undefined && (typeof run.reason !== "string" || run.reason.length > 2000)) ||
+            (run.scheduleId !== undefined && (typeof run.scheduleId !== "string" || !/^0\.0\.[1-9][0-9]*$/.test(run.scheduleId))) ||
+            (run.settlementId !== undefined && (typeof run.settlementId !== "string" || !/^0\.0\.[1-9][0-9]*(?:@[0-9]+\.[0-9]{9}|-[0-9]+-[0-9]{9})$/.test(run.settlementId))) ||
+            (run.hcsVerdictUrl !== undefined && (typeof run.hcsVerdictUrl !== "string" || !/^https:\/\/testnet\.mirrornode\.hedera\.com\/api\/v1\/topics\/0\.0\.[1-9][0-9]*\/messages\/[1-9][0-9]*$/.test(run.hcsVerdictUrl)))) throw new Error("Malformed run evidence");
+        if (["approved", "refused"].includes(run.outcome) &&
+            (!run.scheduleId || !run.settlementId || !run.hcsVerdictUrl || run.steps.some(step => step.state !== "done") ||
+             (run.outcome === "refused" && !run.reason))) throw new Error("Incomplete verdict");
+      }
+
+      function renderEncounter(run) {
+        for (const step of run.steps) {
+          const node = element(`#stage-${step.name}`);
+          const text = stageStates[step.state];
+          if (node.textContent !== text) node.textContent = text;
+          node.dataset.state = step.state;
+        }
+        const links = [
+          ["#run-schedule", run.scheduleId ? `${mirror}${run.scheduleId}` : null],
+          ["#run-payment", run.settlementId ? `https://testnet.mirrornode.hedera.com/api/v1/transactions/${run.settlementId.replace(/@([0-9]+)\.([0-9]{9})$/, "-$1-$2")}` : null],
+          ["#run-verdict", run.hcsVerdictUrl],
+        ];
+        for (const [id, url] of links) {
+          if (url) {
+            element(id).href = url;
+            element(id).rel = "noreferrer";
+            element(id).hidden = false;
+          }
+        }
+        if (run.outcome === "running") return;
+        element("#encounter-result").dataset.outcome = run.outcome;
+        if (run.outcome === "failed") {
+          setText("#outcome-title", "Outcome unknown.");
+          setText("#outcome-detail", "The authorization exercise stopped before a complete verdict was recorded. Inspect this run before trying again.");
+          recordedFallback("The live exercise failed. The stages above are its last received record.");
+          return;
+        }
+        const approved = run.outcome === "approved";
+        setText("#outcome-title", approved ? "Approved." : "Refused.");
+        setText("#outcome-detail", approved
+          ? "The policy allowed this transfer. The guard reports that it signed. Choose another recipient to test the owner's boundary."
+          : `The guard did not sign: ${run.reason}. Your agent key alone cannot authorize this transfer.`);
+        setText("#encounter-notice", "The guard answered. Read the ledger evidence, then the explanation below. One run per 30 seconds per address; wait before trying another account.");
+        explain();
+      }
+
+      async function inspectEncounterExecution(run) {
+        try {
+          const schedule = await encounterRequest(`${mirror}${run.scheduleId}`);
+          if (!schedule || schedule.schedule_id !== run.scheduleId ||
+              (schedule.executed_timestamp !== null && (typeof schedule.executed_timestamp !== "string" ||
+                !/^(0|[1-9][0-9]*)\.[0-9]{9}$/.test(schedule.executed_timestamp)))) throw new Error("Invalid execution evidence");
+          setText("#execution-status", schedule.executed_timestamp === null
+            ? `Mirror executed_timestamp: null. ${run.outcome === "approved" ? "Execution is not yet observed; open the schedule to check again." : "No execution observed at this check."}`
+            : `${run.outcome === "refused" ? "Mismatch: executed despite refusal" : "Executed"} · mirror timestamp ${schedule.executed_timestamp}`);
+        } catch {
+          setText("#execution-status", "Not verified: the mirror node is unavailable, still indexing, or returned unexpected data. Open the schedule to check execution; the guard's verdict above is separate.");
+        }
+      }
+
+      element("#encounter-form").addEventListener("submit", async event => {
+        event.preventDefault();
+        const recipient = element("#recipient").value;
+        if (submitting || !["vendor", "stranger", "agent"].includes(recipient)) return;
+        submitting = true;
+        element("#encounter-controls").disabled = true;
+        element("#recorded-refusal").hidden = true;
+        element("#encounter-result").hidden = false;
+        element("#encounter-result").dataset.outcome = "running";
+        element("#run-links").hidden = true;
+        for (const id of ["#run-schedule", "#run-payment", "#run-verdict", "#run-record"]) element(id).hidden = true;
+        for (const name of stageNames) {
+          setText(`#stage-${name}`, "Waiting for a run record");
+          element(`#stage-${name}`).dataset.state = "pending";
+        }
+        setText("#outcome-title", "Awaiting authorization.");
+        setText("#outcome-detail", "Request sent. Waiting for the operator service to admit the proposal. No verdict yet.");
+        setText("#execution-status", "Ledger execution has not been checked.");
+        element("#encounter-result").focus();
+        setText("#encounter-notice", "A review usually takes about ten seconds. Each stage below changes only when the service reports it; a queue or network delay can take longer.");
+        setText("#elapsed", "Request sent · waiting for a run record");
+        const started = Date.now();
+        const heartbeat = setInterval(() => {
+          const seconds = Math.floor((Date.now() - started) / 1000);
+          setText("#elapsed", `${seconds}s elapsed · ${seconds >= 15 ? "Still waiting on the service; stages show the last received state." : "Waiting for the next service response."}`);
+        }, 1000);
+        let received = false;
+        try {
+          const admitted = await encounterRequest("/sandbox/run", { method: "POST", body: JSON.stringify({ recipient, amountTinybars: "1000000" }) });
+          if (!admitted || admitted.origin !== "operator" || typeof admitted.runId !== "string" ||
+              !/^[a-zA-Z0-9-]{1,100}$/.test(admitted.runId)) throw new Error("Invalid run identifier");
+          element("#run-record").href = `./sandbox.html#run/${admitted.runId}`;
+          element("#run-record").hidden = false;
+          element("#run-links").hidden = false;
+          setText("#outcome-detail", "Proposal admitted. Following its authorization record; the guard has not answered yet.");
+          while (Date.now() - started < 60000) {
+            const run = await encounterRequest(`/sandbox/run/${admitted.runId}`);
+            validateEncounter(run, admitted.runId, recipient);
+            received = true;
+            renderEncounter(run);
+            if (run.outcome !== "running") {
+              clearInterval(heartbeat);
+              setText("#elapsed", "Run record complete · Hedera testnet · operator-funded");
+              if (run.outcome !== "failed") await inspectEncounterExecution(run);
+              return;
+            }
+            await new Promise(resolve => setTimeout(resolve, 1500));
+          }
+          throw new Error("Updates timed out");
+        } catch (error) {
+          setText("#outcome-title", received ? "Updates paused." : "No verdict received.");
+          setText("#outcome-detail", received ? "The stages above are the last valid response. Open this run to check its current state." : "The service has not returned a complete authorization record for this attempt.");
+          recordedFallback(error.status === 429
+            ? "The service allows one run per 30 seconds per address. Wait 30 seconds before trying again."
+            : error.status === 503
+              ? "The live sandbox is unavailable: its operator budget or owner authorizations may be exhausted."
+              : "The service or network did not return a valid response. A submitted transfer may still be running; inspect the run or recent sandbox records before trying again.");
+          if (!received && element("#run-record").hidden) {
+            element("#encounter-result").hidden = true;
+            element("#recorded-refusal").focus();
+          }
+          setText("#elapsed", "Updates stopped · no automatic resubmission");
+        } finally {
+          clearInterval(heartbeat);
+          submitting = false;
+          element("#encounter-controls").disabled = false;
+        }
+      });
+      element("#explanation").hidden = true;
+      element("#site-footer").hidden = true;
+      element("#recorded-refusal").hidden = true;
+      element("#encounter-controls").disabled = false;
 
       async function readLive(url, status, render) {
         try {
