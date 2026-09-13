@@ -8,7 +8,9 @@ build does not support.
 
 ETHGlobal rejects a video that breaks any of these:
 
-- **2 to 4 minutes.** Under two or over four is auto-rejected.
+- **2 to 4 minutes.** Under two or over four is auto-rejected. (The Hedera track's own text
+  says "five minutes or less"; 2–4 satisfies both, so cut to 2–4 and do not rely on the
+  looser figure.)
 - **720p or higher.**
 - **Your real voice.** No text-to-speech, no AI voiceover.
 - **No sped-up footage.** Cutting between takes and between clips is fine; changing
@@ -41,7 +43,8 @@ the public internet to `https://countersign.gudman.xyz`, which is the thing wort
 
 ## Before you hit record
 
-1. `npm test` — expect 360 passing, 0 failing.
+1. `npm test` — expect 543 passing, 0 failing. `python -m pytest python/ -q` — expect 13.
+   Re-check both before recording; do not read a stale number on camera.
 2. Terminal at a large font, full screen, dark background. The output is wide; make sure
    `PASS:` lines do not wrap.
 3. Check your configuration **before** recording, not mid-take. The scripts fail by name on
@@ -147,7 +150,39 @@ On the final evidence block:
 > The proof is absence: the schedule exists, its executed timestamp is null, only the
 > agent's key prefix is in the signature list, and the treasury balance is unchanged."
 
-### Scene 5 — Independent verification (2:35–3:00)
+### Scene 5 — A stranger drives the guard (2:35–3:20) — the browser, no terminal
+
+Open `https://countersign.gudman.xyz/sandbox.html`. This is the scene nothing else in the
+video does: no keys, no install, nothing of ours on the viewer's machine.
+
+Pick **the stranger** as the recipient — it is deliberately not on the mandate allowlist —
+leave the amount small, and submit.
+
+> "Everything so far ran from my machine with my keys. This is the same live guard, but now
+> anyone can put a proposal to it from a browser. I am the agent here. I am going to try to
+> send money to an account the owner never approved."
+
+Let the chain render. Stop on the refusal.
+
+> "The guard refused, and it says why: the recipient is outside the mandate allowlist. The
+> owner signed that policy in advance and is not online. Nothing here asked them."
+
+Then open the schedule link the page gives you, on the mirror node.
+
+> "One signature — the agent's. `executed_timestamp` is null. The guard did not withhold the
+> money, it withheld its signature, so the account's key was never satisfied and Hedera never
+> moved anything. The refusal is not a message from me. It is an absence on the ledger."
+
+Say the disclosure plainly, on camera:
+
+> "Those accounts are mine and I fund them, including the fee for a refused review. These are
+> reliability exercises, not users."
+
+If the budget is exhausted or you are rate-limited, the page says so and the recent-runs list
+still has real, clickable evidence — narrate one of those instead. Do not re-record to chase
+a fresh run.
+
+### Scene 6 — Independent verification (3:20–3:45)
 
 Optionally show `curl https://countersign.gudman.xyz/guard` first — it returns the guard's
 public key and HCS-14 identifier, free, which is how a caller identifies the service before

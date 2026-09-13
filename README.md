@@ -31,6 +31,44 @@ curl https://countersign.gudman.xyz/guard
 `POST /review` is the paid endpoint. It answers HTTP 402 with a price in HBAR, and does no
 consensus work until an x402 payment settles through the Blocky402 facilitator.
 
+## Drive the guard yourself
+
+The guard also backs a public sandbox. You pick a recipient and an amount, and your proposal
+is put to the live guard as the agent:
+
+```text
+https://countersign.gudman.xyz/sandbox.html
+```
+
+The vendor account is on the mandate allowlist and the stranger account is not, so a
+recipient outside the policy is refused and you can read that refusal on the mirror node.
+Two runs from 2026-09-13:
+
+| | Guard approved | Guard refused |
+| --- | --- | --- |
+| Schedule | [`0.0.10512157`](https://testnet.mirrornode.hedera.com/api/v1/schedules/0.0.10512157) | [`0.0.10512142`](https://testnet.mirrornode.hedera.com/api/v1/schedules/0.0.10512142) |
+| `executed_timestamp` | `1789254816.147827986` | `null` |
+| Signer prefixes | agent **and** guard | agent only |
+| Refusal reason | — | recipient outside the mandate allowlist |
+| HCS verdict | [topic `0.0.10511981`](https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10511981/messages/2) | [topic `0.0.10511981`, message 1](https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10511981/messages/1) |
+
+The sandbox holds no owner key and no guard key — only mandate envelopes the owner signed in
+advance and the service cannot alter. A fixed number of single-use nonces is therefore a
+structural ceiling on what it can ever spend, not a rate limit. Its treasury, agent, payer
+and vendor accounts are **operator-owned and operator-funded**; sandbox runs are
+**operator-run reliability exercises, not users**, and they are counted separately from the
+records below and never summed into them.
+
+## Paying an ordinary x402 seller
+
+The same authorization tree also works on the buyer side. A treasury keyed
+`1-of[owner, 2-of[agent, guard]]` can be the **payer of an ordinary x402 payment**, signed by
+the agent and the guard and never by the owner, settled by the stock Blocky402 facilitator
+with no change to the seller. Policy therefore binds what the agent may buy, not just what it
+may schedule. Two runs are recorded on
+[topic `0.0.10507040`](https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10507040/messages):
+message 1 approved, message 2 refused. The seller in those runs is operated by us.
+
 ## Live evidence
 
 The runs below were made from a separate machine against that public endpoint on

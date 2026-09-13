@@ -857,9 +857,9 @@
             <p class="next"><strong>Next</strong> an enrollment path the owner can complete without the operator, with its own review.</p>
           </div></li>
           <li><div>
-            <h3>HBAR only; HTS is refused</h3>
-            <p>A mandate may name a fungible HTS token and will parse and verify, but every token proposal is refused at review because consensus token fee state is not verified yet. Structurally valid HTS proposals fail at the custom-fee check.</p>
-            <p class="next"><strong>Next</strong> resolving the token's fee schedule from consensus and reviewing it the way the HBAR body is reviewed.</p>
+            <h3>HTS is refused on the schedule path</h3>
+            <p>HTS approval differs by route. On the schedule path (<code>POST /review</code>) every token proposal is refused, because that path does not resolve the token's consensus fee state. On the transfer path (<code>POST /countersign</code>) the guard resolves <code>TokenInfo</code> from consensus and approves a fungible token only when it carries no custom fees and an immutable fee schedule. That route is registered, paid and tested, but it has not been exercised live on testnet and no token run appears in <a href="./evidence.json">evidence.json</a>.</p>
+            <p class="next"><strong>Next</strong> exercising the transfer path's token route live on testnet so it has ledger evidence, and resolving the token's fee schedule on the schedule path too.</p>
           </div></li>
           <li><div>
             <h3>On the schedule path the guard approves a ScheduleID, not bytes</h3>

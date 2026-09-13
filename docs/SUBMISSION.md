@@ -45,11 +45,22 @@ and HCS-14 identifier for free, so a caller can identify the service before payi
 `POST /review` is the paid endpoint. The approved and refused runs above were made from a
 separate machine against that endpoint.
 
+Anyone can put a proposal to that live guard at
+https://countersign.gudman.xyz/sandbox.html: pick a recipient and an amount and watch it be
+approved or refused, then read the outcome on the public mirror node. The sandbox holds no
+owner key and no guard key, only mandate envelopes signed in advance that it cannot alter, so
+a fixed number of single-use nonces is a structural ceiling on what it can spend.
+
 Honest limits, also stated in the README: these are my own operator runs, not external
-users, and testnet payments are paid protocol trials, not revenue. One guard process
-authorizes exactly one treasury, so this is not a marketplace — a second treasury needs a
-second guard. HTS token approval is deliberately disabled, and every token proposal is
-refused.
+users, and testnet payments are paid protocol trials, not revenue. The sandbox accounts are
+operator-owned and operator-funded, and its runs are counted separately and never summed into
+the manifest. One guard process authorizes exactly one treasury, so this is not a marketplace
+— a second treasury needs a second guard. HTS approval differs by route: the schedule path
+(`POST /review`) refuses every token proposal because it does not resolve the token's
+consensus fee state, while the transfer path (`POST /countersign`) resolves `TokenInfo` from
+consensus and approves a fungible token only when it carries no custom fees and an immutable
+fee schedule. That route is registered, paid and tested, but it has not been exercised live
+on testnet and no token run appears in the manifest.
 
 ## How it's made
 
@@ -83,7 +94,7 @@ reserved in SQLite before approval, and only the request that wins the reservati
 submit ScheduleSign. Participant identity is HCS-14 for both agent and guard, and verdicts
 go to immutable, submit-key-protected HCS topics with custom fees rejected at startup.
 
-360 tests across 15 files, all offline. One defect the offline suite could not have caught
+543 TypeScript tests and 13 Python tests, all offline. One defect the offline suite could not have caught
 surfaced on the first live run: the mirror node returns `signatures[].public_key_prefix` as
 base64 and three code paths expected hex. The fixtures used `"a".repeat(16)`, which is
 itself valid base64, so they passed while asserting nothing about the real encoding. The
@@ -95,7 +106,8 @@ the repository.
 ## Links
 
 - **GitHub:** https://github.com/Ridwannurudeen/countersign-ethonline2026
-- **Demonstration:** https://countersign.gudman.xyz/guard (the live guard's identity endpoint)
+- **Demonstration:** https://countersign.gudman.xyz/sandbox.html (drive the live guard yourself)
+- **Guard identity:** https://countersign.gudman.xyz/guard (unpaid, returns the key and HCS-14 identifier)
 - **Video:** pending recording
 
 ## Prize selection

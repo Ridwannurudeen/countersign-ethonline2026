@@ -9,6 +9,13 @@ submits real testnet transactions, and pays testnet fees. It does not support ma
 > free. The walkthrough below runs your own guard instead, which is what a treasury owner
 > would do.
 >
+> **You can also drive that live guard from a browser** at
+> [`/sandbox.html`](https://countersign.gudman.xyz/sandbox.html) without installing
+> anything: pick a recipient and an amount and watch the guard approve or refuse, then check
+> the result on the mirror node. Those accounts are operator-owned and operator-funded, and
+> the service holds no owner key and no guard key — only mandate envelopes signed in advance
+> that it cannot alter.
+>
 > **Live-status disclosure:** these steps were executed end to end against Hedera testnet
 > on 2026-09-12. `npm run spike`, `npm run demo` and `npm run refusal` all completed, and
 > every outcome below is checkable on the mirror node without running this code:

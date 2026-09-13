@@ -822,7 +822,10 @@
             The agent can publish the transfer it wants, but its key alone satisfies neither
             branch, so Hedera itself rejects it. An independent guard checks the proposal
             against a policy the owner signed and adds the second signature only on an exact
-            match. Callers pay the guard per review over x402, and the answer can be no.
+            match. Callers pay the guard per review over x402, and the answer can be no. The same
+            treasury can also be the payer of an ordinary x402 purchase, signed by the agent and
+            the guard and never by the owner, through an unmodified facilitator — so policy binds
+            what the agent may buy, not only what it may schedule.
           </p>
           <div class="actions">
             <a class="btn btn-primary" href="./sandbox.html">Try to get money out</a>
