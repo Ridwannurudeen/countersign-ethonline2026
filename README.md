@@ -123,6 +123,14 @@ separate from the treasury, expected agent, guard operator, and their authorizat
 keys. The narrated flow also pays from a separately keyed account, so none of the
 treasury authorization keys enters its decoded x402 payload.
 
+On this branch, `POST /countersign` meters the submitted transaction's decoded byte
+length and transfer adjustments, including each node variant. Its 402 challenge
+publishes the inputs, base, rates, floor, ceiling and exact HBAR amount. `/review`
+stays flat because its ScheduleID body is fetched from consensus after payment.
+This is request-derived work metering, not elapsed compute time or post-usage billing.
+See [the formula, configuration and local HTTP quote evidence](docs/METERING.md).
+Metering has not been deployed by this change.
+
 **One guard process can authorize multiple configured tenants.** Each tenant has its own
 owner and agent public keys, treasury account and expected agent account. The guard
 re-checks every tenant's authorization tree against consensus at startup and refuses to

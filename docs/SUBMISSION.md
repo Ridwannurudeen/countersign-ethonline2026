@@ -25,7 +25,7 @@ independent guard to review it. The guard answers HTTP 402 Payment Required, quo
 price in HBAR, and settlement goes through the Blocky402 x402 facilitator on Hedera
 testnet.
 
-Only after payment does the guard do any work. It resolves the ScheduleID from consensus —
+Only after settlement does the guard perform consensus authorization work. It resolves the ScheduleID from consensus —
 it never trusts a summary the caller sent it — and checks 48 decoded fields against a
 mandate the treasury owner signed: recipient allowlist, amount cap, asset, fee, expiry, who
 created the schedule, who pays for it, and that its own key is not already on it. If every
@@ -74,9 +74,16 @@ are how a second signature arrives asynchronously. The agent's ScheduleCreate pu
 exact transfer; the guard's ScheduleSign completes the threshold.
 
 Payment is x402 through `@x402/core` and `@x402/hedera`, settled by the hosted Blocky402
-facilitator on `hedera:testnet`. Hedera's x402 is exact-scheme only, so the price is one
-known check-unit quoted up front in the 402 challenge — not post-usage metering, and the
-README says so. The fee is paid from a separately keyed operational account, so no treasury
+facilitator on `hedera:testnet`. The exact-scheme 402 challenge quotes the price before
+authorization work. `POST /countersign` meters request-derived work: a published base,
+a prorated rate per 1,024 decoded transaction bytes, and a rate per transfer adjustment
+across all submitted node variants, clamped to a configured positive floor and ceiling.
+The challenge exposes those inputs, rates, bounds and the resulting amount so the caller
+can reproduce it. `POST /review` remains flat because it receives only a ScheduleID and
+fetches the body from consensus after settlement. This is not elapsed compute or post-usage
+inference metering. Both routes still settle in HBAR before authorization review and signing.
+The metering change has local HTTP and payment-scheme test evidence; it has not been deployed.
+The fee is paid from a separately keyed operational account, so no treasury
 authorization key ever enters a payment payload; startup asserts that separation and
 refuses to run otherwise.
 
@@ -94,7 +101,7 @@ reserved in SQLite before approval, and only the request that wins the reservati
 submit ScheduleSign. Participant identity is HCS-14 for both agent and guard, and verdicts
 go to immutable, submit-key-protected HCS topics with custom fees rejected at startup.
 
-570 TypeScript tests and 13 Python tests, all offline. One defect the offline suite could not have caught
+599 TypeScript tests and 13 Python tests, all offline. One defect the offline suite could not have caught
 surfaced on the first live run: the mirror node returns `signatures[].public_key_prefix` as
 base64 and three code paths expected hex. The fixtures used `"a".repeat(16)`, which is
 itself valid base64, so they passed while asserting nothing about the real encoding. The
