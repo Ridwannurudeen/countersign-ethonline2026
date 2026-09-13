@@ -37,6 +37,7 @@ const mandate: Mandate = {
 };
 const context: CountersignContext = {
   expectedAgentAccountId: "0.0.2001",
+  guardAccountId: "0.0.3001",
   treasuryAccountId: mandate.treasuryAccountId,
   ownerPublicKey: owner.publicKey,
   agentPublicKey: agent.publicKey,
@@ -243,7 +244,14 @@ const bodyCases: [string, (body: proto.TransactionBody) => void, string][] = [
         ...body.cryptoTransfer!.transfers!.accountAmounts![0]!.accountID,
       };
     },
-    "network fee is not paid by the treasury",
+    "network fee is not paid by the treasury or guard",
+  ],
+  [
+    "guard pays the network fee",
+    (body) => {
+      body.transactionID!.accountID = AccountId.fromString(context.guardAccountId)._toProtobuf();
+    },
+    "network fee is not paid by the treasury or guard",
   ],
   [
     "scheduled flag",

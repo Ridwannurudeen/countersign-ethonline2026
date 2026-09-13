@@ -167,6 +167,7 @@ function harness(
   const completions: CompletedMandateReview[] = [];
   const dependencies: ReviewServerDependencies = {
     countersign: {
+      guardAccountId: "0.0.3001",
       protocolMaxFeeTinybars: "100000000",
       nowEpochSeconds: () => "1788509005",
       sign: (approval) => countersignTransfer(approval, guardPrivateKey),

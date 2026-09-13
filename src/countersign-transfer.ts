@@ -17,6 +17,7 @@ import type { ReviewCheckReporter, ReviewOutcome } from "./review-schedule.ts";
 export interface CountersignContext {
   readonly expectedAgentAccountId: string;
   readonly treasuryAccountId: string;
+  readonly guardAccountId: string;
   // These keys must come from trusted configuration for the named accounts.
   readonly ownerPublicKey: PublicKey;
   readonly agentPublicKey: PublicKey;
@@ -86,7 +87,7 @@ export async function validateCountersignTransfer(
   try {
     check(
       "policy account IDs are canonical numeric IDs",
-      [context.expectedAgentAccountId, context.treasuryAccountId].every((id) =>
+      [context.expectedAgentAccountId, context.treasuryAccountId, context.guardAccountId].every((id) =>
         /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/.test(id),
       ),
     );
@@ -216,8 +217,9 @@ export async function validateCountersignTransfer(
           numericId(id.accountID) !== null,
       );
       check(
-        "network fee is not paid by the treasury",
-        numericId(id.accountID) !== context.treasuryAccountId,
+        "network fee is not paid by the treasury or guard",
+        numericId(id.accountID) !== context.treasuryAccountId &&
+          numericId(id.accountID) !== context.guardAccountId,
       );
       check(
         "transaction fee equals the fixed protocol value",

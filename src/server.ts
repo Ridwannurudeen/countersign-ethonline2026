@@ -105,6 +105,7 @@ export interface ProductionReviewTenant extends ReviewTenant {
 
 export interface ReviewServerDependencies {
   countersign: {
+    guardAccountId: string;
     executeTokenInfoQuery?: CountersignContext["executeTokenInfoQuery"];
     protocolMaxFeeTinybars: string;
     nowEpochSeconds(): string;
@@ -685,6 +686,7 @@ async function handleCountersignRequest(
   }
   const outcome = await validateCountersignTransfer(transactionBase64, envelope, {
     ...tenant,
+    guardAccountId: dependencies.countersign.guardAccountId,
     guardPublicKey: dependencies.guardPublicKey,
     protocolMaxFeeTinybars: dependencies.countersign.protocolMaxFeeTinybars,
     nowEpochSeconds: dependencies.countersign.nowEpochSeconds(),
@@ -1039,6 +1041,7 @@ export async function createProductionReviewServer(
 
   return createReviewServer({
     countersign: {
+      guardAccountId: operatorAccountId.toString(),
       executeTokenInfoQuery: (query) => query.execute(client),
       protocolMaxFeeTinybars: config.protocolMaxFeeTinybars,
       nowEpochSeconds: () => Math.floor(Date.now() / 1_000).toString(),
