@@ -34,6 +34,7 @@ import {
   type PaymentGate,
   type PaymentGateConfig,
 } from "./payment-gate.ts";
+import { DEFAULT_COUNTERSIGN_METER } from "./payment-meter.ts";
 import {
   completeMandateReview,
   getCompletedMandateReview,
@@ -116,7 +117,7 @@ export interface ReviewServerDependencies {
   tenants: ReadonlyMap<string, ReviewTenant & { agentIdentifier: string }>;
   guardPublicKey: PublicKey;
   paymentGate: PaymentGate;
-  payment: Pick<PaymentGateConfig, "resourceUrl" | "priceTinybars">;
+  payment: Pick<PaymentGateConfig, "resourceUrl" | "priceTinybars" | "countersignMeter">;
   lookupCompletedReview(
     reservation: MandateReviewReservation,
   ): Awaitable<CompletedMandateReview | null>;
@@ -416,6 +417,8 @@ async function handleReviewRequest(
             network: "hedera:testnet",
             asset: "0.0.0",
             priceTinybars: dependencies.payment.priceTinybars,
+            priceAppliesTo: "/review",
+            countersignMeter: dependencies.payment.countersignMeter ?? DEFAULT_COUNTERSIGN_METER,
           },
         }],
       },
@@ -668,7 +671,7 @@ async function handleCountersignRequest(
   if (!verifyMandateSignature(envelope, tenant.ownerPublicKey)) {
     throw new RequestError(401, "mandate signature is invalid");
   }
-  const payment = await dependencies.paymentGate.review(paymentSignatureHeader(incoming), "/countersign");
+  const payment = await dependencies.paymentGate.review(paymentSignatureHeader(incoming), "/countersign", transactionBase64);
   if (!payment.paid) {
     writeJson(response, payment.status, payment.body, payment.headers);
     return;

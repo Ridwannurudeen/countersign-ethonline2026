@@ -15,10 +15,10 @@ import { CountersignRefusal, createCosignedClientHederaSigner } from "../src/cos
 import { canonicalMandateBytes, parseMandateEnvelope, type Mandate } from "../src/mandate.ts";
 import { assertMirrorSettlement, transactionMirrorUrl } from "./guarded-purchase.ts";
 import { resolveGuard } from "./hosted-review.ts";
+import { DEFAULT_COUNTERSIGN_METER } from "../src/payment-meter.ts";
 
 const NETWORK = "hedera:testnet";
 const MIRROR = "https://testnet.mirrornode.hedera.com/api/v1";
-const REVIEW_TINYBARS = "1000000";
 const SUPPLY_UNITS = 1000;
 const TRANSFER_UNITS = "10";
 
@@ -186,12 +186,15 @@ async function main(): Promise<void> {
     }
     console.log("Both token associations verified; allowed recipient was associated by token creation as token treasury.");
 
+    let quotedReviewTinybars = DEFAULT_COUNTERSIGN_METER.minTinybars;
     const guardPaymentClient = new x402Client().register(NETWORK, new ExactHederaScheme(
       createClientHederaSigner(caller, callerKey, { network: NETWORK }),
-    )).setSpendControls({ allowedAssets: [{ network: NETWORK, asset: "0.0.0", maxAmountPerPayment: REVIEW_TINYBARS }] })
+    )).setSpendControls({ allowedAssets: [{ network: NETWORK, asset: "0.0.0", maxAmountPerPayment: DEFAULT_COUNTERSIGN_METER.maxTinybars }] })
       .onBeforePaymentCreation(async ({ selectedRequirements: quote }) => {
         assert.equal(quote.payTo, reviewRecipient);
-        assert.equal(quote.amount, REVIEW_TINYBARS);
+        assert.ok(BigInt(quote.amount) >= BigInt(DEFAULT_COUNTERSIGN_METER.minTinybars));
+        assert.ok(BigInt(quote.amount) <= BigInt(DEFAULT_COUNTERSIGN_METER.maxTinybars));
+        quotedReviewTinybars = quote.amount;
         assert.equal(quote.network, NETWORK);
         assert.equal(quote.asset, "0.0.0");
         assert.equal(typeof quote.extra?.feePayer, "string");
@@ -303,7 +306,7 @@ async function main(): Promise<void> {
         }
       }
       assertMirrorSettlement(await mirrorJson(transactionMirrorUrl(settlementId)) as Parameters<typeof assertMirrorSettlement>[0],
-        settlementId, caller, reviewRecipient, REVIEW_TINYBARS);
+        settlementId, caller, reviewRecipient, quotedReviewTinybars);
       console.log(`Verified ${label}: HTS authorization ${outcome}; x402 review settlement in HBAR.`);
     }
     console.log("PASS: live guarded HTS transfer and allowlist refusal verified. The x402 review settlement asset remained HBAR.");
