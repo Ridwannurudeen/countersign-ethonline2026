@@ -84,6 +84,45 @@ test("sandbox serializes complete runs, reserves concurrent capacity and preserv
   assert.deepEqual(events, ["balance", "schedule:1", "review:1", "balance", "schedule:2", "review:2"]);
 });
 
+test("sandbox bounds waiting runs and rejects busy requests without consuming their token or envelope", async t => {
+  const release = Promise.withResolvers<void>();
+  const nonces: string[] = [];
+  const { sandbox } = fixture(t, 4, {
+    async createSchedule(_proposal, envelope) {
+      nonces.push(envelope.mandate.nonce);
+      if (envelope.mandate.nonce === "1") await release.promise;
+      return `0.0.${envelope.mandate.nonce}`;
+    },
+  }, () => 0);
+  assert.equal((await post(sandbox, "first")).status, 202);
+  const second = post(sandbox, "second");
+  const third = post(sandbox, "third");
+  const fourth = post(sandbox, "fourth");
+  try {
+    const busy = await Promise.race([fourth, new Promise<null>(resolve => setImmediate(() => resolve(null)))]);
+    assert.ok(busy !== null, "busy admission must respond without waiting for the active run");
+    assert.equal(busy.status, 503);
+    assert.ok("error" in busy.body);
+    assert.equal(busy.body.error, "sandbox busy; try again shortly");
+    assert.equal((await post(sandbox, "first")).status, 429);
+    assert.deepEqual(nonces, ["1"]);
+  } finally {
+    release.resolve();
+    await Promise.all([second, third, fourth]);
+    await sandbox.idle();
+  }
+  assert.equal((await second).status, 202);
+  assert.equal((await third).status, 202);
+  assert.deepEqual(nonces, ["1", "2", "3"]);
+  assert.equal((await post(sandbox, "fourth")).status, 202);
+  await sandbox.idle();
+  assert.deepEqual(nonces, ["1", "2", "3", "4"]);
+  const exhausted = await post(sandbox, "fifth");
+  assert.equal(exhausted.status, 503);
+  assert.ok("error" in exhausted.body);
+  assert.equal(exhausted.body.error, "sandbox pre-signed envelopes exhausted");
+});
+
 test("sandbox exhaustion survives restart and retains honest linkable evidence", async t => {
   const { sandbox, database, envelopes } = fixture(t, 1);
   const accepted = await post(sandbox);

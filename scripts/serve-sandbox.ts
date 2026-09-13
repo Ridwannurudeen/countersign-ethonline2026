@@ -94,6 +94,7 @@ export function createSandbox(envelopes: MandateEnvelope[], database: DatabaseSy
     const time = now();
     for (const [ip, refill] of buckets) if (refill <= time) buckets.delete(ip);
     if (buckets.has(address)) throw new RequestError(429, "one sandbox run per 30 seconds per client address");
+    if (queued >= 2) throw new RequestError(503, "sandbox busy; try again shortly");
     buckets.set(address, time + 30_000);
     queued += 1;
     const admitted = Promise.withResolvers<Run>();

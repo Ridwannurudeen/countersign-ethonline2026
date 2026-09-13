@@ -26,11 +26,22 @@ Approval describes the guard's authorization verdict; it does not claim independ
 confirmation of schedule execution.
 
 Invalid input, malformed JSON and bodies above 8 KB return `400`. A one-token bucket
-per socket address refills after 30 seconds; excess requests return `429`. Forwarded
-headers are not trusted. Proxy client-address handling belongs to the nginx slice.
+per client address refills after 30 seconds; excess requests return `429`. The client
+address is the proxy's `X-Real-IP` when present, because the service binds loopback only
+and every socket peer is nginx; nginx overwrites that header from `$remote_addr`. A caller
+reaching the service directly on the host could therefore set it, which the structural
+envelope ceiling still bounds.
 Envelope exhaustion returns `503` with `sandbox pre-signed envelopes exhausted`.
 A low balance returns `503` with `sandbox budget exhausted`. Concurrent requests wait
 for their turn; balance checks and the entire schedule/payment/review flow are serialized.
+At most two runs may wait, including a run currently checking balances; a run whose
+envelope consumption has been persisted no longer counts as waiting. When that queue
+is full, otherwise eligible requests return `503` with `sandbox busy; try again shortly`
+without consuming an address token or reserving an envelope. Genuine envelope exhaustion
+still takes precedence. The page uses its generic retry guidance for busy responses,
+not its terminal exhaustion copy. This small cap limits reservation bursts and waiting
+behind active work; it does not guarantee a response before a proxy timeout or prevent
+sustained requests from distinct addresses from eventually consuming the envelope budget.
 Incoming headers and request bodies have timeouts; outbound operations are bounded.
 
 Keep `var/sandbox-runs.sqlite` with the mandate file. It persists envelope consumption
